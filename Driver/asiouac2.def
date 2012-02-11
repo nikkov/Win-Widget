@@ -1,0 +1,9 @@
+LIBRARY			ASIOUAC2
+DESCRIPTION		'ASIO USB Audio Class 2 Driver'
+PROTMODE
+EXPORTS	
+				DllMain
+				DllGetClassObject
+				DllCanUnloadNow
+				DllRegisterServer
+				DllUnregisterServer
