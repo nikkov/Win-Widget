@@ -1,16 +1,27 @@
+/*!
+#
+# Win-Widget. Windows related software for Audio-Widget/SDR-Widget (http://code.google.com/p/sdr-widget/)
+# Copyright (C) 2012 Nikolay Kovbasa
+#
+# Permission to copy, use, modify, sell and distribute this software 
+# is granted provided this copyright notice appears in all copies. 
+# This software is provided "as is" without express or implied
+# warranty, and with no claim as to its suitability for any purpose.
+#
+#----------------------------------------------------------------------------
+# Contact: nikkov@gmail.com
+#----------------------------------------------------------------------------
+*/
 #ifndef __INCLUDE_PRIMITIVES_H_
 #define __INCLUDE_PRIMITIVES_H_
 
 #include <windows.h>
-//#include "log/logfunction.h"
 
-//Описание примитивов синхронизации и потоков
-//оригинал - библиотека SAL by K.A. Knizhnik
+// System Abstraction Layer based on SAL by K.A. Knizhnik (http://www.garret.ru/sal.html)
 
 #define task_proc WINAPI
-typedef unsigned timeout_t; // timeout in milliseconds
 
-//Класс синхронизации для сигнализации
+// simple synchronization object
 class event_internals 
 { 
 private: 
@@ -28,7 +39,7 @@ public:
 	~event_internals() { CloseHandle(h); }
 }; 
 
-//Внутренний класс синхронизации для обеспечения исключения доступа к критичным данным из разных потоков
+// basic synchronization primitive
 class mutex_internals 
 { 
 protected: 
@@ -42,7 +53,7 @@ public:
 	~mutex_internals() { DeleteCriticalSection(&cs); } 
 };
 
-
+// protecting block of code from concurrent access
 class guard_internals 
 { 
 protected: 
@@ -53,7 +64,7 @@ public:
 	~guard_internals() { if(m_mutex) m_mutex->leave(); } 
 };
 
-
+// simple task
 class task
 { 
 public: 
@@ -85,13 +96,9 @@ public:
 		HANDLE h = CreateThread(NULL, stack_size, LPTHREAD_START_ROUTINE(f), arg, CREATE_SUSPENDED, (DWORD*)&threadid);
 		if (h == NULL) 
 		{ 
-			//console::error("CreateThread failed with error code=%d\n", GetLastError());
 			return NULL;
 		}
-		SetThreadPriority(h, THREAD_PRIORITY_LOWEST + 
-			(THREAD_PRIORITY_HIGHEST - THREAD_PRIORITY_LOWEST) 
-			* (pri - pri_background) 
-			/ (pri_realtime - pri_background));
+		SetThreadPriority(h, THREAD_PRIORITY_LOWEST + (THREAD_PRIORITY_HIGHEST - THREAD_PRIORITY_LOWEST) * (pri - pri_background) / (pri_realtime - pri_background));
 		ResumeThread(h);
 		CloseHandle(h);
 		return threadid;
@@ -102,13 +109,6 @@ public:
 		ExitThread(0);
 	} 
 	//
-	// Current task will sleep during specified period
-	//
-	static void  sleep(timeout_t msec)
-	{ 
-		Sleep(msec);
-	}
-	//
 	// Get current task
 	//
 	static task* current()
@@ -117,29 +117,28 @@ public:
 	}
 }; 
 
-
+// simple task with some useful functions
 class SimpleWorker
 {
 public:
 	SimpleWorker() : m_task(NULL), m_exitFlag(false) {}
 	virtual ~SimpleWorker() { Stop(); }
 
-	// Запуск потока
+	// Start task
 	virtual void Start()
 	{
 		m_task = task::create(process_function, (void*)this, task::pri_realtime);
 	}
-	// Остановка потока
+	// Stop task
 	virtual void Stop()
 	{
 		if(m_task)
 		{
 			m_exitFlag = true;
-			// Подождем завершения потока
+			// waiting task ending
 			m_guard_thread.enter();
 			m_guard_thread.leave();
 
-			//m_task->exit();	
 			m_task = NULL;
 		}
 	}
@@ -148,17 +147,17 @@ public:
 		return m_task != NULL;
 	}
 protected:
-	// основная рабочая функция потока
+	// main task function
 	virtual bool DoWork() = 0;
-	// мьютех для ограничения преждевременного выхода из потока
+	// sync object for task
 	mutex_internals m_guard_thread;
 
-	// мьютех для ограничения одновременного доступа к данным
+	// sync object for concurrent data access
 	mutex_internals m_guard;
-	// флаг сигнализирующий о необходимости завершения потока
+	// need exit task flag
 	volatile int	m_exitFlag;
 
-	// рабочая функция потока
+	// function task
 	virtual void Work()
 	{
 		m_guard_thread.enter();
@@ -166,12 +165,13 @@ protected:
 		{
 			try
 			{
-				//вход в критическую секцию для ограничения одновременного доступа к критическим данным объекта
+				// input to main function
 				m_guard.enter();
-				//Работа в производном классе
+				// work
 				bool retVal = DoWork();
+				// exit from main function
 				m_guard.leave();
-				//Если производный класс просигнализировал, то выйти
+				// DoWork failed - exit
 				if(!retVal)
 					break;
 			}

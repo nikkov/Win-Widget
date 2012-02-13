@@ -1,6 +1,44 @@
-/*! \file examples.h
-* \brief Common include file used only in examples.
+/*!
+#
+# Win-Widget. Windows related software for Audio-Widget/SDR-Widget (http://code.google.com/p/sdr-widget/)
+# Copyright (C) 2012 Nikolay Kovbasa
+#
+# Permission to copy, use, modify, sell and distribute this software 
+# is granted provided this copyright notice appears in all copies. 
+# This software is provided "as is" without express or implied
+# warranty, and with no claim as to its suitability for any purpose.
+#
+#----------------------------------------------------------------------------
+# Contact: nikkov@gmail.com
+#----------------------------------------------------------------------------
 */
+/*
+# Copyright (c) 2011 Travis Robinson <libusbdotnet@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+# 	  
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS 
+# IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED 
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A 
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL TRAVIS LEE ROBINSON 
+# BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+# THE POSSIBILITY OF SUCH DAMAGE. 
+#
+*/
+
+// Simple test application for play test signal
+// Contains parts from LibUsbK examples by Travis Lee Robinson (http://libusb-win32.sourceforge.net/libusbKv3/)
+
 
 #include <windows.h>
 #include <stdio.h>
@@ -16,9 +54,17 @@
 #ifdef WIDGET
 #define WIDGET_VID			0x16C0
 #define WIDGET_PID			0x03E8
+#define EP_TRANSFER_OUT         0x02
+#define EP_TRANSFER_IN          0x81
+//#define EP_PACKET_SIZE          4
+#define ISO_PACKETS_PER_XFER    16
 #else
 #define WIDGET_VID			0x08BB
 #define WIDGET_PID			0x2902
+// #define EP_TRANSFER_IN             0x84
+#define EP_TRANSFER_OUT             0x02
+#define EP_PACKET_SIZE          90
+#define ISO_PACKETS_PER_XFER    10
 #endif
 
 #define TEST_VERSION		0x03
@@ -150,11 +196,6 @@ BOOL SetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId, int fr
 	}
 	return FALSE;
 }
-
-
-
-
-
 
 
 int main(int argc, char* argv[])
@@ -316,17 +357,6 @@ int main(int argc, char* argv[])
 	r = SetCurrentFreq(handle, 1, 5, 48000);
 */
 
-#ifdef WIDGET
- #define EP_TRANSFER_OUT         0x02
- #define EP_TRANSFER_IN          0x81
- //#define EP_PACKET_SIZE          4
- #define ISO_PACKETS_PER_XFER    16
-#else
-// #define EP_TRANSFER_IN             0x84
- #define EP_TRANSFER_OUT             0x02
- #define EP_PACKET_SIZE          90
- #define ISO_PACKETS_PER_XFER    10
-#endif
     printf("Try found output pipe id %X and feedback id %X\n", EP_TRANSFER_OUT, EP_TRANSFER_IN);
 
     UCHAR interfaceIndex = (UCHAR) - 1;

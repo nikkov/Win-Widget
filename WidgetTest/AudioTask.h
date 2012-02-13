@@ -1,3 +1,44 @@
+/*!
+#
+# Win-Widget. Windows related software for Audio-Widget/SDR-Widget (http://code.google.com/p/sdr-widget/)
+# Copyright (C) 2012 Nikolay Kovbasa
+#
+# Permission to copy, use, modify, sell and distribute this software 
+# is granted provided this copyright notice appears in all copies. 
+# This software is provided "as is" without express or implied
+# warranty, and with no claim as to its suitability for any purpose.
+#
+#----------------------------------------------------------------------------
+# Contact: nikkov@gmail.com
+#----------------------------------------------------------------------------
+*/
+/*
+# Copyright (c) 2011 Travis Robinson <libusbdotnet@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+# 	  
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS 
+# IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED 
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A 
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL TRAVIS LEE ROBINSON 
+# BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+# THE POSSIBILITY OF SUCH DAMAGE. 
+#
+*/
+
+// Read and write endpoints classes
+// Contains parts from LibUsbK examples by Travis Lee Robinson (http://libusb-win32.sourceforge.net/libusbKv3/)
+
 #pragma once
 #include "primitives.h"
 #include "libusbk.h"
@@ -32,7 +73,7 @@ public:
 class AudioTask :
 	public SimpleWorker
 {
-	//один элемент-буфер
+	// one buffer element
 	typedef struct _MY_ISO_BUFFER_EL
 	{
 		PUCHAR          DataBuffer;
@@ -46,7 +87,7 @@ class AudioTask :
 
 	} MY_ISO_BUFFER_EL, *PMY_ISO_BUFFER_EL;
 
-	//список буферов
+	// buffer list
 	typedef struct _MY_ISO_XFERS
 	{
 		KOVL_POOL_HANDLE    OvlPool;
@@ -104,7 +145,7 @@ class AudioTask :
 	void IsoXferComplete(PMY_ISO_XFERS myXfers, PMY_ISO_BUFFER_EL myBufferEL, ULONG transferLength);
 
 protected:
-	// основная рабочая функция потока
+	// main function
 	virtual bool DoWork();
 
 public:

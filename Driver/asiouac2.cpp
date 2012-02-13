@@ -1,22 +1,22 @@
+/*!
+#
+# Win-Widget. Windows related software for Audio-Widget/SDR-Widget (http://code.google.com/p/sdr-widget/)
+# Copyright (C) 2012 Nikolay Kovbasa
+#
+# Permission to copy, use, modify, sell and distribute this software 
+# is granted provided this copyright notice appears in all copies. 
+# This software is provided "as is" without express or implied
+# warranty, and with no claim as to its suitability for any purpose.
+#
+#----------------------------------------------------------------------------
+# Contact: nikkov@gmail.com
+#----------------------------------------------------------------------------
+*/
+// Based on samples from ASIO SDK
 /*
 	Steinberg Audio Stream I/O API
 	(c) 1996, Steinberg Soft- und Hardware GmbH
 	charlie (May 1996)
-
-	asiosmpl.cpp
-	
-	sample implementation of asio. can be set to simulate input with some
-	stupid oscillators.
-	this driver doesn't output sound at all...
-	timing is done via the extended time manager on the mac, and
-	a simple thread on pc.
-	you may test various configurations by changing the kNumInputs/Outputs,
-	and kBlockFrames. note that when using wave generation, as i/o is not optimized
-	at all, it moves quite a bit of memory, too many i/o channels may make it
-	pretty slow.
-
-	if you use this file as a template, make sure to resolve places where the
-	search string !!! can be found...
 */
 
 #include <stdio.h>
@@ -71,7 +71,7 @@ const char driverDescriptionLong[] = "ASIO USB Audio Class 2 Driver";
 const char driverDescriptionShort[] = "ASIO UAC2";
 const char driverDllName[] = "asiouac2.dll";
 
-// class id. !!! NOTE: !!! you will obviously have to create your own class id!
+// class id
 // {CCB9056B-7B74-4677-8BDE-65E42ADB7A6A}
 CLSID IID_ASIO_DRIVER = { 0xccb9056b, 0x7b74, 0x4677, { 0x8b, 0xde, 0x65, 0xe4, 0x2a, 0xdb, 0x7a, 0x6a } };
 

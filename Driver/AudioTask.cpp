@@ -1,3 +1,44 @@
+/*!
+#
+# Win-Widget. Windows related software for Audio-Widget/SDR-Widget (http://code.google.com/p/sdr-widget/)
+# Copyright (C) 2012 Nikolay Kovbasa
+#
+# Permission to copy, use, modify, sell and distribute this software 
+# is granted provided this copyright notice appears in all copies. 
+# This software is provided "as is" without express or implied
+# warranty, and with no claim as to its suitability for any purpose.
+#
+#----------------------------------------------------------------------------
+# Contact: nikkov@gmail.com
+#----------------------------------------------------------------------------
+*/
+/*
+# Copyright (c) 2011 Travis Robinson <libusbdotnet@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+# 	  
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS 
+# IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED 
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A 
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL TRAVIS LEE ROBINSON 
+# BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+# THE POSSIBILITY OF SUCH DAMAGE. 
+#
+*/
+
+// Read and write endpoints classes
+// Contains parts from LibUsbK examples by Travis Lee Robinson (http://libusb-win32.sourceforge.net/libusbKv3/)
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -29,7 +70,6 @@ AudioTask::~AudioTask(void)
 {
 }
 
-
 void AudioTask::DL_APPEND(PMY_ISO_BUFFER_EL &head, PMY_ISO_BUFFER_EL &add)
 {
 	if (head) 
@@ -49,12 +89,12 @@ void AudioTask::DL_APPEND(PMY_ISO_BUFFER_EL &head, PMY_ISO_BUFFER_EL &add)
 
 void AudioTask::DL_DELETE(PMY_ISO_BUFFER_EL &head,PMY_ISO_BUFFER_EL &del)
 {                      
-	if (del->prev == del) //это голова
+	if (del->prev == del)
 	{
 		head = NULL;
 	}
 	else
-		if (del == head) //удаляем голову
+		if (del == head)
 		{
 			if(del->next)
 				del->next->prev = del->prev;
@@ -202,7 +242,7 @@ bool AudioTask::DoWork()
 		float nextOffSet = 0;
 		int dataLength = 0;
 
-		while(errorCode == ERROR_SUCCESS &&	gXfers.Completed)  //есть завершенные пакеты
+		while(errorCode == ERROR_SUCCESS &&	gXfers.Completed)
 		{
 			if(nextFrameSize == packetSize)
 				nextFrameSize -= 8;
@@ -224,7 +264,7 @@ bool AudioTask::DoWork()
 					{
 						nextXfer->IsoContext->IsoPackets[packetIndex].Offset = (int)nextOffSet;
 						nextOffSet += cur_feedback;
-						//оффсет обрезаем так, чтобы общий размер был кратен 8, т.е. стереосэмплу
+						// trunk offset to integer number of stereo sample
 						nextOffSet += 4.f;
 						nextOffSet = (float)((int)nextOffSet - ((int)nextOffSet % 8));
 					}
@@ -278,7 +318,7 @@ bool AudioTask::DoWork()
 			errorCode = ERROR_SUCCESS;
 		}
 
-		nextXfer = gXfers.Outstanding; //очередь пакетов
+		nextXfer = gXfers.Outstanding;
 		if (!nextXfer) 
 		{
 #ifdef _DEBUG
