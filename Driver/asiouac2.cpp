@@ -442,7 +442,7 @@ ASIOError AsioUAC2::start ()
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: Can't start device: already started!");
 #endif
-		return ASE_InvalidMode;
+		return ASE_OK; //ASE_InvalidMode;
 	}
 
 	if (callbacks)
@@ -485,7 +485,7 @@ ASIOError AsioUAC2::stop ()
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: Can't stop device: already stoped!");
 #endif
-		return ASE_InvalidMode;
+		return ASE_OK;//ASE_InvalidMode;
 	}
 
 #ifdef EMULATION_HARDWARE
@@ -509,6 +509,9 @@ ASIOError AsioUAC2::stop ()
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::getChannels (long *numInputChannels, long *numOutputChannels)
 {
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: getChannels request");
+#endif
 #ifndef NO_INPUTS
 	*numInputChannels = kNumInputs;
 #else
@@ -530,6 +533,9 @@ ASIOError AsioUAC2::getLatencies (long *_inputLatency, long *_outputLatency)
 ASIOError AsioUAC2::getBufferSize (long *minSize, long *maxSize,
 	long *preferredSize, long *granularity)
 {
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: getBufferSize request");
+#endif
 	*minSize = *maxSize = *preferredSize = blockFrames;		// allow this size only
 	*granularity = 0;
 	return ASE_OK;
@@ -659,6 +665,10 @@ ASIOError AsioUAC2::getSamplePosition (ASIOSamples *sPos, ASIOTimeStamp *tStamp)
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 {
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: getChannelInfo request. Channel %d", info->channel);
+#endif
+
 	if (info->channel < 0 || (info->isInput ? 
 #ifndef NO_INPUTS
 		info->channel >= kNumInputs 
@@ -668,7 +678,7 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 			: info->channel >= kNumOutputs))
 		return ASE_InvalidParameter;
 
-	info->type = ASIOSTInt32MSB; //ASIOSTInt32LSB24;//ASIOSTInt32MSB24;
+	info->type = ASIOSTInt32LSB; //ASIOSTInt32MSB; //ASIOSTInt32LSB24;//ASIOSTInt32MSB24;
 	info->channelGroup = 0;
 	info->isActive = ASIOFalse;
 
@@ -1011,6 +1021,9 @@ ASIOError AsioUAC2::StartDevice()
 
 	UsbK_ClaimInterface(handle, audioControlStreamNum, FALSE);
 	UsbK_SetAltInterface(handle, audioControlStreamNum, FALSE, audioControlStreamAltNum);
+
+	memset(outputBuffers[0], 0, blockFrames * 2 * sizeof(int));
+	memset(outputBuffers[1], 0, blockFrames * 2 * sizeof(int));
 
 	feedbackTask = new AudioTask(this, handle, &gPipeInfoFeedback, 16, gPipeInfoFeedback.MaximumPacketSize, gPipeInfoFeedback.MaximumPacketSize, TRUE);
 	outputTask = new AudioTask(this, handle, &gPipeInfoWrite, 32, packetSize, (float)sampleRate / 1000.f, FALSE);

@@ -185,6 +185,7 @@ void AudioTask::Start()
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: Start AudioTask thread");
 #endif
+	Sleep(100);
 	SimpleWorker::Start();
 }
 
@@ -230,6 +231,9 @@ void AudioTask::Stop()
     // Free the overlapped pool.
     OvlK_Free(gXfers.OvlPool);
 
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: AudioTask buffer free OK!");
+#endif
 }
 
 bool AudioTask::DoWork()
@@ -311,7 +315,10 @@ bool AudioTask::DoWork()
 			if (errorCode != ERROR_IO_PENDING) 
 			{
 #ifdef _DEBUG
-				debugPrintf("ASIOUAC: IsoReadPipe/IsoWritePipe failed. ErrorCode: %08Xh",  errorCode);
+			if(isReadTask)
+				debugPrintf("ASIOUAC: IsoReadPipe failed. ErrorCode: %08Xh",  errorCode);
+			else
+				debugPrintf("ASIOUAC: IsoWritePipe failed. ErrorCode: %08Xh",  errorCode);
 #endif
 				return FALSE;
 			}
@@ -327,11 +334,14 @@ bool AudioTask::DoWork()
 			return TRUE;
 		}
 
-		r = OvlK_Wait(nextXfer->OvlHandle, 1000, KOVL_WAIT_FLAG_NONE, &transferred);
+		r = OvlK_Wait(nextXfer->OvlHandle, 10000, KOVL_WAIT_FLAG_NONE, &transferred);
 		if (!r) 
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: OvlK_Wait failed. ErrorCode: %08Xh",  GetLastError());
+			if(isReadTask)
+				debugPrintf("ASIOUAC: OvlK_Wait failed while read. ErrorCode: %08Xh",  GetLastError());
+			else
+				debugPrintf("ASIOUAC: OvlK_Wait failed while write. ErrorCode: %08Xh",  GetLastError());
 #endif
 
 			//errorCode = GetLastError();
