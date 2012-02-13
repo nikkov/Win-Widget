@@ -211,6 +211,8 @@ private:
 
 	AudioTask* outputTask;
 	AudioTask* feedbackTask;
+
+	HANDLE deviceMutex;
 };
 
 #endif

@@ -163,6 +163,8 @@ AsioUAC2::AsioUAC2 () : AsioDriver ()
 	outputTask = NULL;
 	feedbackTask = NULL;
 
+	deviceMutex = NULL;
+
 	memset(&deviceDescriptor, 0, sizeof(USB_DEVICE_DESCRIPTOR));
 	memset(&configurationDescriptor, 0, sizeof(USB_CONFIGURATION_DESCRIPTOR));
 	memset(&gPipeInfoFeedback, 0, sizeof(WINUSB_PIPE_INFORMATION));
@@ -570,7 +572,7 @@ ASIOError AsioUAC2::getSampleRate (ASIOSampleRate *sampleRate)
 {
 	*sampleRate = this->sampleRate;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Return current samplerate %d", (int)*sampleRate);
+	//debugPrintf("ASIOUAC: Return current samplerate %d", (int)*sampleRate);
 #endif
 	return ASE_OK;
 }
@@ -1017,6 +1019,21 @@ ASIOBool AsioUAC2::SetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int c
 
 ASIOError AsioUAC2::StartDevice()
 {
+	deviceMutex = CreateMutex(NULL, FALSE, "Global\\ASIOUAC2");
+	if(GetLastError() == ERROR_ALREADY_EXISTS)
+	{
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Can't start device! Device already used!");
+#endif
+		if(deviceMutex)
+		{
+			CloseHandle(deviceMutex);
+			deviceMutex = NULL;
+		}
+
+		return ASE_InvalidMode;
+	}
+
 	int packetSize = 4 * (int)sampleRate / 1000 / (1 << (gPipeInfoWrite.Interval - 1)) + 8;
 
 	UsbK_ClaimInterface(handle, audioControlStreamNum, FALSE);
@@ -1053,6 +1070,11 @@ ASIOError AsioUAC2::StopDevice()
 	UsbK_SetAltInterface(handle, audioControlStreamNum, FALSE, 0);
 	UsbK_ReleaseInterface(handle, audioControlStreamNum, FALSE);
 
+	if(deviceMutex)
+	{
+		CloseHandle(deviceMutex);
+		deviceMutex = NULL;
+	}
 	return ASE_OK;
 }
 

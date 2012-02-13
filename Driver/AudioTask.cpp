@@ -232,7 +232,7 @@ void AudioTask::Stop()
     OvlK_Free(gXfers.OvlPool);
 
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: AudioTask buffer free OK!");
+	debugPrintf("ASIOUAC: AudioTask buffer free OK!");
 #endif
 }
 
@@ -246,7 +246,7 @@ bool AudioTask::DoWork()
 		float nextOffSet = 0;
 		int dataLength = 0;
 
-		while(errorCode == ERROR_SUCCESS &&	gXfers.Completed)
+		while(errorCode == ERROR_SUCCESS &&	gXfers.Completed && !m_exitFlag)
 		{
 			if(nextFrameSize == packetSize)
 				nextFrameSize -= 8;
@@ -326,7 +326,7 @@ bool AudioTask::DoWork()
 		}
 
 		nextXfer = gXfers.Outstanding;
-		if (!nextXfer) 
+		if (!nextXfer || m_exitFlag) 
 		{
 #ifdef _DEBUG
 			debugPrintf("ASIOUAC: No more packets!");
@@ -334,7 +334,7 @@ bool AudioTask::DoWork()
 			return TRUE;
 		}
 
-		r = OvlK_Wait(nextXfer->OvlHandle, 10000, KOVL_WAIT_FLAG_NONE, &transferred);
+		r = OvlK_Wait(nextXfer->OvlHandle, 100, KOVL_WAIT_FLAG_NONE, &transferred);
 		if (!r) 
 		{
 #ifdef _DEBUG
