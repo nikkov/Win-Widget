@@ -13,7 +13,9 @@
 #----------------------------------------------------------------------------
 */
 // Widget control utility
-//
+// Based on code Widget Control
+// by Alex Lee, 9V1AL & Loftur Jonasson, TF3LJ 
+
 using System;
 using System.Collections;
 using System.ComponentModel;
