@@ -24,6 +24,7 @@
 #include "asiouac2.h"
 #include "AudioTask.h"
 
+#define _DeviceInterfaceGUID "{09e4c63c-ce0f-168c-1862-06410a764a35}"
 
 void debugPrintf(const char *szFormat, ...)
 {
@@ -165,6 +166,8 @@ AsioUAC2::AsioUAC2 () : AsioDriver ()
 
 	deviceMutex = NULL;
 
+	USBAudioClass = USBAudioClassUnknown;
+
 	memset(&deviceDescriptor, 0, sizeof(USB_DEVICE_DESCRIPTOR));
 	memset(&configurationDescriptor, 0, sizeof(USB_CONFIGURATION_DESCRIPTOR));
 	memset(&gPipeInfoFeedback, 0, sizeof(WINUSB_PIPE_INFORMATION));
@@ -291,23 +294,21 @@ ASIOBool AsioUAC2::init (void* sysRef)
 	}
 
 	LstK_MoveReset(deviceList);
-    while(LstK_MoveNext(deviceList, &tmpDeviceInfo))
-    {
-        if (tmpDeviceInfo->Common.Vid == WIDGET_VID &&
-                tmpDeviceInfo->Common.Pid == WIDGET_PID)
-        {
-			if(!_stricmp(tmpDeviceInfo->Service, "libusbK") && tmpDeviceInfo->Connected)
-			{
-				deviceInfo = tmpDeviceInfo;
-				break;
-			}
-        }
-    }
+	while(LstK_MoveNext(deviceList, &tmpDeviceInfo)
+		&& deviceInfo == NULL)
+	{
+		if(!_stricmp(tmpDeviceInfo->DeviceInterfaceGUID, _DeviceInterfaceGUID) && tmpDeviceInfo->Connected)
+		{
+			deviceInfo = tmpDeviceInfo;
+			break;
+		}
+	}
+
 	if (!deviceInfo)
 	{
-		sprintf(errorMessage, "Device vid/pid %04X/%04X not found!", WIDGET_VID, WIDGET_PID);
+		sprintf(errorMessage, "Device with DeviceInterfaceGUID %s not found!", _DeviceInterfaceGUID);
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Device vid/pid %04X/%04X not found!", WIDGET_VID, WIDGET_PID);
+		debugPrintf("ASIOUAC: Device with DeviceInterfaceGUID %s not found!", _DeviceInterfaceGUID);
 #endif
 		// If LstK_Init returns TRUE, the list must be freed.
 		LstK_Free(deviceList);
@@ -315,7 +316,7 @@ ASIOBool AsioUAC2::init (void* sysRef)
 		return false;
 	}
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Found device vid/pid %04X/%04X!", WIDGET_VID, WIDGET_PID);
+	debugPrintf("ASIOUAC: Found device with DeviceInterfaceGUID %s!", _DeviceInterfaceGUID);
 #endif
 
     // Initialize the device with the "dynamic" Open function
@@ -334,8 +335,8 @@ ASIOBool AsioUAC2::init (void* sysRef)
 //todo: load this values from descriptors
 	audioControlInterfaceNum = AUDIO_CTRL_IFACE_NUM;
 	clockSourceId = CLOCK_SOURCE_ID;
-	outEndpointNum = EP_TRANSFER_OUT;
-	feedbackEndpointNum = EP_TRANSFER_FEEDBACK;
+	//outEndpointNum = EP_TRANSFER_OUT;
+	//feedbackEndpointNum = EP_TRANSFER_FEEDBACK;
 
 	SetCurrentFreq(handle, audioControlInterfaceNum, clockSourceId, (int)sampleRate);
 	sampleRate = GetCurrentFreq(handle, audioControlInterfaceNum, clockSourceId);
@@ -369,7 +370,7 @@ ASIOBool AsioUAC2::init (void* sysRef)
             UCHAR pipeIndex = (UCHAR) - 1;
             while(UsbK_QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoFeedback))
             {
-                if (gPipeInfoFeedback.PipeId != feedbackEndpointNum || gPipeInfoFeedback.PipeType != UsbdPipeTypeIsochronous)
+                if (USB_ENDPOINT_DIRECTION_OUT(gPipeInfoFeedback.PipeId) || gPipeInfoFeedback.PipeType != UsbdPipeTypeIsochronous)
 	                memset(&gPipeInfoFeedback, 0, sizeof(gPipeInfoFeedback));
 				else
 					break;
@@ -377,7 +378,7 @@ ASIOBool AsioUAC2::init (void* sysRef)
             pipeIndex = (UCHAR) - 1;
             while(UsbK_QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoWrite))
             {
-                if (gPipeInfoWrite.PipeId != outEndpointNum || gPipeInfoWrite.PipeType != UsbdPipeTypeIsochronous)
+                if (!USB_ENDPOINT_DIRECTION_OUT(gPipeInfoWrite.PipeId) || gPipeInfoWrite.PipeType != UsbdPipeTypeIsochronous)
 	                memset(&gPipeInfoWrite, 0, sizeof(gPipeInfoWrite));
 				else
 					break;

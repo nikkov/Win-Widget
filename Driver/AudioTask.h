@@ -169,7 +169,5 @@ private:
 	DWORD errorCode;
 	BOOL isReadTask;
 
-	int nextFrameSize;
-
 	AsioUAC2* asioDriver;
 };

@@ -37,8 +37,15 @@ enum
 	kNumOutputs = 2
 };
 
-#define WIDGET_VID			0x16C0
-#define WIDGET_PID			0x03E8
+enum
+{
+	USBAudioClassUnknown = 0,
+	USBAudioClass1,
+	USBAudioClass2
+};
+
+//#define WIDGET_VID			0x16C0
+//#define WIDGET_PID			0x03E8
 
 
 #define DEFAULT_SAMPLE_RATE	44100.
@@ -182,6 +189,7 @@ private:
 	char errorMessage[128];
 
 private:
+	int USBAudioClass;
 	KLST_HANDLE deviceList;
 	KUSB_HANDLE handle;
 	KLST_DEVINFO_HANDLE deviceInfo;
@@ -194,8 +202,8 @@ private:
 	int audioControlStreamNum;
 	int audioControlStreamAltNum;
 	int clockSourceId;
-	int outEndpointNum;
-	int feedbackEndpointNum;
+	//int outEndpointNum;
+	//int feedbackEndpointNum;
 
 	int currentBufferPosition;
 

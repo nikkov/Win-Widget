@@ -165,8 +165,6 @@ void AudioTask::Start()
     // Reset the pipe.
     UsbK_ResetPipe(handle, (UCHAR)gPipeInfo->PipeId);
 
-	nextFrameSize = packetSize;
-
 	UCHAR policyValue = 1;
 	if(!isReadTask)
 	{
@@ -248,11 +246,6 @@ bool AudioTask::DoWork()
 
 		while(errorCode == ERROR_SUCCESS &&	gXfers.Completed && !m_exitFlag)
 		{
-			if(nextFrameSize == packetSize)
-				nextFrameSize -= 8;
-			else
-				nextFrameSize += 8;
-
 			nextXfer = gXfers.Completed;
 
 			if(!isReadTask)
@@ -307,7 +300,7 @@ bool AudioTask::DoWork()
 						  handle,
 						  gPipeInfo->PipeId,
 						  nextXfer->DataBuffer,
-						  dataLength, //packetPerTransfer * nextFrameSize,
+						  dataLength,
 						  (LPOVERLAPPED)nextXfer->OvlHandle,
 						  nextXfer->IsoContext);
 
