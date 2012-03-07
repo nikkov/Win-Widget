@@ -50,10 +50,10 @@
 #include "AudioTask.h"
 
 #define WIDGET
-
+/*
 #ifdef WIDGET
-#define WIDGET_VID			0x16C0
-#define WIDGET_PID			0x03E8
+//#define WIDGET_VID			0x16C0
+//#define WIDGET_PID			0x03E8
 #define EP_TRANSFER_OUT         0x02
 #define EP_TRANSFER_IN          0x81
 //#define EP_PACKET_SIZE          4
@@ -66,8 +66,25 @@
 #define EP_PACKET_SIZE          90
 #define ISO_PACKETS_PER_XFER    10
 #endif
+*/
+#define _DeviceInterfaceGUID "{09e4c63c-ce0f-168c-1862-06410a764a35}"
+
 
 #define TEST_VERSION		0x03
+
+void debugPrintf(const char *szFormat, ...)
+{
+    char str[4096];
+    va_list argptr;
+    va_start(argptr, szFormat);
+    vsprintf_s(str, szFormat, argptr);
+    va_end(argptr);
+
+    OutputDebugStringA(str);
+}
+
+
+BOOL isUAC1 = false;
 
 ULONG LoadStringDescriptor(KUSB_HANDLE handle, UCHAR index, PUCHAR  Buffer, ULONG  BufferLength)
 {
@@ -173,14 +190,24 @@ int GetRangeFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId)
 
 int GetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId)
 {
-	int freq;
+	int freq = 0;
 	ULONG lengthTransferred = 0;
-	if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_DEVICE_TO_HOST, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_INTERFACE, 
-		AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, (clockId << 8) + interfaceNumber,
-				   (unsigned char*)&freq, sizeof(freq), &lengthTransferred) && lengthTransferred == 4)
+	if(isUAC1)
 	{
-		return freq;
+		if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_DEVICE_TO_HOST, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_ENDPOINT, 
+			0x81, AUDIO_CS_CONTROL_SAM_FREQ << 8, interfaceNumber,
+					   (unsigned char*)&freq, 3, &lengthTransferred) && lengthTransferred == 3)
+		{
+			return freq;
+		}
 	}
+	else
+		if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_DEVICE_TO_HOST, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_INTERFACE, 
+			AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, (clockId << 8) + interfaceNumber,
+					   (unsigned char*)&freq, sizeof(freq), &lengthTransferred) && lengthTransferred == 4)
+		{
+			return freq;
+		}
 	return 0;
 }
 
@@ -188,265 +215,303 @@ int GetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId)
 BOOL SetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId, int freq)
 {
 	ULONG lengthTransferred = 0;
-	if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_HOST_TO_DEVICE, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_INTERFACE, 
-		AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, (clockId << 8) + interfaceNumber,
-				   (unsigned char*)&freq, sizeof(freq), &lengthTransferred) && lengthTransferred == 4)
+	if(isUAC1)
 	{
-		return TRUE;
+		if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_HOST_TO_DEVICE, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_ENDPOINT, 
+			AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, interfaceNumber,
+					   (unsigned char*)&freq, 3, &lengthTransferred) && lengthTransferred == 3)
+		{
+			return TRUE;
+		}
 	}
+	else
+		if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_HOST_TO_DEVICE, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_INTERFACE, 
+			AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, (clockId << 8) + interfaceNumber,
+					   (unsigned char*)&freq, sizeof(freq), &lengthTransferred) && lengthTransferred == 4)
+		{
+			return TRUE;
+		}
 	return FALSE;
 }
 
 
 int main(int argc, char* argv[])
 {
-	KLST_FLAG Flags = KLST_FLAG_INCLUDE_DISCONNECT;//KLST_FLAG_NONE;
-	ULONG deviceCount = 0;
-	DWORD errorCode = ERROR_SUCCESS;
-	CHAR   StringBuffer[512];
-	UCHAR  Buffer[4096];
-	ULONG  BufferLength = sizeof(Buffer);
-	ULONG  LengthTransferred = 0;
-
-	KLST_HANDLE DeviceList = NULL;
-	KUSB_HANDLE handle = NULL;
-	KLST_DEVINFO_HANDLE DeviceInfo = NULL;
-	KLST_DEVINFO_HANDLE tmpDeviceInfo = NULL;
-	USB_DEVICE_DESCRIPTOR deviceDescriptor;
-	USB_CONFIGURATION_DESCRIPTOR configurationDescriptor;
-	USB_INTERFACE_DESCRIPTOR interfaceDescriptor;
-	WINUSB_PIPE_INFORMATION     gPipeInfoRead;
-	WINUSB_PIPE_INFORMATION     gPipeInfoWrite;
-	AudioTask *readtask = NULL;
-	AudioTask *writetask = NULL;
-
-    printf("WidgetTest version %X\n", TEST_VERSION);
-
-	memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
-    // Select interface by pipe id and get descriptors.
-    memset(&gPipeInfoRead, 0, sizeof(gPipeInfoRead));
-    memset(&gPipeInfoWrite, 0, sizeof(gPipeInfoWrite));
-
-	//printf("Press any key for continue!\n");
-	//_getch();
-
-	// Get the device list
-	if (!LstK_Init(&DeviceList, Flags))
+	do
 	{
-		printf("Error initializing device list.\n");
-		goto Done1;
-	}
+		KLST_FLAG Flags = KLST_FLAG_INCLUDE_DISCONNECT;//KLST_FLAG_NONE;
+		ULONG deviceCount = 0;
+		DWORD errorCode = ERROR_SUCCESS;
+		UCHAR  Buffer[4096];
+		ULONG  BufferLength = sizeof(Buffer);
+		ULONG  LengthTransferred = 0;
 
-	LstK_Count(DeviceList, &deviceCount);
-	if (!deviceCount)
-	{
-		printf("No device not connected.\n");
-		SetLastError(ERROR_DEVICE_NOT_CONNECTED);
-		// If LstK_Init returns TRUE, the list must be freed.
-		LstK_Free(DeviceList);
-		goto Done1;
-	}
+		KLST_HANDLE DeviceList = NULL;
+		KUSB_HANDLE handle = NULL;
+		KLST_DEVINFO_HANDLE DeviceInfo = NULL;
+		KLST_DEVINFO_HANDLE tmpDeviceInfo = NULL;
+		USB_DEVICE_DESCRIPTOR deviceDescriptor;
+		USB_CONFIGURATION_DESCRIPTOR configurationDescriptor;
+		USB_INTERFACE_DESCRIPTOR interfaceDescriptor;
+		WINUSB_PIPE_INFORMATION     gPipeInfoRead;
+		WINUSB_PIPE_INFORMATION     gPipeInfoWrite;
+		AudioTask *readtask = NULL;
+		AudioTask *writetask = NULL;
 
-	printf("Looking for device vid/pid %04X/%04X..\n", WIDGET_VID, WIDGET_PID);
-	LstK_MoveReset(DeviceList);
-    //
-    //
-    // Call LstK_MoveNext after a LstK_MoveReset to advance to the first
-    // element.
-    while(LstK_MoveNext(DeviceList, &tmpDeviceInfo))
-    {
-        if (tmpDeviceInfo->Common.Vid == WIDGET_VID &&
-                tmpDeviceInfo->Common.Pid == WIDGET_PID)
-        {
-			if(!_stricmp(tmpDeviceInfo->Service, "libusbK") && tmpDeviceInfo->Connected)
+		printf("WidgetTest version %X\n", TEST_VERSION);
+
+		memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
+		// Select interface by pipe id and get descriptors.
+		memset(&gPipeInfoRead, 0, sizeof(gPipeInfoRead));
+		memset(&gPipeInfoWrite, 0, sizeof(gPipeInfoWrite));
+
+		//printf("Press any key for continue!\n");
+		//_getch();
+
+		// Get the device list
+		if (!LstK_Init(&DeviceList, Flags))
+		{
+			printf("Error initializing device list.\n");
+			goto Done1;
+		}
+
+		LstK_Count(DeviceList, &deviceCount);
+		if (!deviceCount)
+		{
+			printf("No device not connected.\n");
+			SetLastError(ERROR_DEVICE_NOT_CONNECTED);
+			// If LstK_Init returns TRUE, the list must be freed.
+			LstK_Free(DeviceList);
+			goto Done1;
+		}
+
+
+		printf("Looking for device with DeviceInterfaceGUID %s\n", _DeviceInterfaceGUID);
+		LstK_MoveReset(DeviceList);
+		//
+		//
+		// Call LstK_MoveNext after a LstK_MoveReset to advance to the first
+		// element.
+		while(LstK_MoveNext(DeviceList, &tmpDeviceInfo)
+			&& DeviceInfo == NULL)
+		{
+			if(!_stricmp(tmpDeviceInfo->DeviceInterfaceGUID, _DeviceInterfaceGUID) && tmpDeviceInfo->Connected)
 			{
 				DeviceInfo = tmpDeviceInfo;
 				break;
 			}
-        }
-    }
+		}
 
-//	LstK_FindByVidPid(DeviceList, WIDGET_VID, WIDGET_PID, &DeviceInfo);
-	if (!DeviceInfo)
-	{
-		printf("Device vid/pid %04X/%04X not found.\n\n", WIDGET_VID, WIDGET_PID);
-		// If LstK_Init returns TRUE, the list must be freed.
+	//	LstK_FindByVidPid(DeviceList, WIDGET_VID, WIDGET_PID, &DeviceInfo);
+		if (!DeviceInfo)
+		{
+			printf("Device with DeviceInterfaceGUID %snot found.\n", _DeviceInterfaceGUID);
+			// If LstK_Init returns TRUE, the list must be freed.
+			LstK_Free(DeviceList);
+			goto Done1;
+		}
+
+
+		// load a dynamic driver api for this device.  The dynamic driver api
+		// is more versatile because it adds support for winusb.sys devices.
+		if (!LibK_LoadDriverAPI(&Usb, DeviceInfo->DriverID))
+		{
+			errorCode = GetLastError();
+			printf("LibK_LoadDriverAPI failed. ErrorCode: %08Xh\n",  errorCode);
+			goto Done1;
+		}
+
+		// Display some information on the driver api type.
+		switch(DeviceInfo->DriverID)
+		{
+		case KUSB_DRVID_LIBUSBK:
+			printf("libusbK driver api loaded!\n");
+			break;
+		case KUSB_DRVID_LIBUSB0:
+			printf("libusb0 driver api loaded!\n");
+			break;
+		case KUSB_DRVID_WINUSB:
+			printf("WinUSB driver api loaded!\n");
+			break;
+		case KUSB_DRVID_LIBUSB0_FILTER:
+			printf("libusb0/filter driver api loaded!\n");
+			break;
+		}
+
+		/*
+		From this point forth, do not use the exported "UsbK_" functions. Instead,
+		use the functions in the driver api initialized above.
+		*/
+
+		// Initialize the device with the "dynamic" Open function
+		if (!Usb.Init(&handle, DeviceInfo))
+		{
+			errorCode = GetLastError();
+			printf("Usb.Init failed. ErrorCode: %08Xh\n",  errorCode);
+			goto Done1;
+		}
+		printf("Device opened successfully!\n");
+
+		BufferLength = sizeof(Buffer);
+		if(!Usb.QueryDeviceInformation( handle, DEVICE_SPEED, &BufferLength, Buffer))
+		{
+			errorCode = GetLastError();
+			printf("UsbK_QueryDeviceInformation failed. ErrorCode: %08Xh\n",  errorCode);
+			goto Done1;
+		}
+		if(Buffer[0] == 0x3)
+		{
+			printf("Device speed: high\n");
+		}
+		else
+		{
+			printf("Device speed: low/full\n");
+		}
+
+		if(!Usb.GetDescriptor( handle, USB_DESCRIPTOR_TYPE_DEVICE, 0, 0, (PUCHAR)&deviceDescriptor, sizeof(deviceDescriptor), &LengthTransferred))
+		{
+			errorCode = GetLastError();
+			printf("UsbK_GetDescriptor failed. ErrorCode: %08Xh\n",  errorCode);
+			goto Done1;
+		}
+
+		if(!Usb.GetDescriptor( handle, USB_DESCRIPTOR_TYPE_CONFIGURATION, 0, 0, Buffer, sizeof(Buffer), &LengthTransferred))
+		{
+			errorCode = GetLastError();
+			printf("UsbK_GetDescriptor failed. ErrorCode: %08Xh\n",  errorCode);
+			goto Done1;
+		}
+
+		memcpy(&configurationDescriptor, Buffer, sizeof(USB_CONFIGURATION_DESCRIPTOR));
+
+		BOOL r;
+	/*
+		GetRangeFreq(handle, 1, 5);
+		int freq = GetCurrentFreq(handle, 1, 5);
+		r = SetCurrentFreq(handle, 1, 5, 44100);
+		freq = GetCurrentFreq(handle, 1, 5);
+		r = SetCurrentFreq(handle, 1, 5, 48000);
+	*/
+
+		//printf("Try found output pipe id %X and feedback id %X\n", EP_TRANSFER_OUT, EP_TRANSFER_IN);
+		printf("Try found output and feedback pipe\n");
+
+		UCHAR interfaceIndex = (UCHAR) - 1;
+		ULONG lengthTranserred = 0;
+
+		while(gPipeInfoRead.PipeId == 0 && gPipeInfoWrite.PipeId == 0 && 
+			Usb.SelectInterface(handle, ++interfaceIndex, TRUE))
+		{
+			memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
+			UCHAR gAltsettingNumber = (UCHAR) - 1;
+			while(Usb.QueryInterfaceSettings(handle, ++gAltsettingNumber, &interfaceDescriptor))
+			{
+				UCHAR pipeIndex = (UCHAR) - 1;
+				while(Usb.QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoRead))
+				{
+					printf("Pipe id %x found.\n", gPipeInfoRead.PipeId);
+					if (USB_ENDPOINT_DIRECTION_OUT(gPipeInfoRead.PipeId) || gPipeInfoRead.PipeType != UsbdPipeTypeIsochronous)
+						memset(&gPipeInfoRead, 0, sizeof(gPipeInfoRead));
+					else
+						break;
+				}
+				pipeIndex = (UCHAR) - 1;
+				while(Usb.QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoWrite))
+				{
+					if (!USB_ENDPOINT_DIRECTION_OUT(gPipeInfoWrite.PipeId) || gPipeInfoWrite.PipeType != UsbdPipeTypeIsochronous)
+						memset(&gPipeInfoWrite, 0, sizeof(gPipeInfoWrite));
+					else
+						break;
+				}
+				if (gPipeInfoRead.PipeId && gPipeInfoWrite.PipeId) break;
+				memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
+			}
+		}
+
+		if (!gPipeInfoRead.PipeId)
+		{
+			printf("Input pipe not found.\n");
+			goto Done1;
+		}
+		if (!gPipeInfoWrite.PipeId)
+		{
+			printf("Output pipe not found.\n");
+			goto Done1;
+		}
+
+		if(gPipeInfoWrite.Interval == 1)
+			isUAC1 = true;
+
+		r = Usb.ClaimInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE);
+		r = Usb.SetAltInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE, interfaceDescriptor.bAlternateSetting); 
+
+
+		int freq = 48000;
+		if(argc > 1) 
+			freq = atoi(argv[1]);
+
+		if(!isUAC1)
+		{
+			r = SetCurrentFreq(handle, 1, 5, freq);
+			freq = GetCurrentFreq(handle, 1, 5);
+		}
+		else
+		{
+			r = SetCurrentFreq(handle, 3, 0, freq);
+			freq = GetCurrentFreq(handle, 3, 0);
+		}
+
+		printf("Using freq=%d\n", freq);
+
+		float defaultPacketSize = isUAC1 ? 6.0f * (float)freq / 1000.0f :
+			8.0f * (float)freq / 1000.0f / (float)(1 << gPipeInfoWrite.Interval);
+
+		int packetSize = isUAC1 ? (int)defaultPacketSize + 6 :
+			(int)defaultPacketSize + 8; //+ 1 stereo extra sample
+
+		if(!isUAC1)
+		{
+			readtask = new AudioTask(handle, &gPipeInfoRead, 16, gPipeInfoRead.MaximumPacketSize, gPipeInfoRead.MaximumPacketSize, TRUE, 4);
+			writetask = new AudioTask(handle, &gPipeInfoWrite, 32, packetSize, defaultPacketSize, FALSE, 4);
+		}
+		else
+		{
+			readtask = new AudioTask(handle, &gPipeInfoRead, 16, gPipeInfoRead.MaximumPacketSize, gPipeInfoRead.MaximumPacketSize, TRUE, 3);
+ 			writetask = new AudioTask(handle, &gPipeInfoWrite, 16, packetSize, defaultPacketSize, FALSE, 3);
+		}
+
+		printf("Press any key for exit.\n");
+
+		readtask->Start();
+		writetask->Start();
+
+		_getch();
+		writetask->Stop();
+		readtask->Stop();
+
+	Done1:
+		if(interfaceDescriptor.bLength != 0)
+		{
+			r = Usb.SetAltInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE, 0);
+			r = Usb.ReleaseInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE);
+		}
+
+		if(writetask)
+			delete writetask;
+
+		if(readtask)
+			delete readtask;
+
+		// Close the device handle
+		// if handle is invalid (NULL), has no effect
+		UsbK_Free(handle);
+
+		// Free the device list
+		// if deviceList is invalid (NULL), has no effect
 		LstK_Free(DeviceList);
-		goto Done1;
-	}
+	} while( 0 );
 
-
-    // load a dynamic driver api for this device.  The dynamic driver api
-    // is more versatile because it adds support for winusb.sys devices.
-    if (!LibK_LoadDriverAPI(&Usb, DeviceInfo->DriverID))
-    {
-        errorCode = GetLastError();
-        printf("LibK_LoadDriverAPI failed. ErrorCode: %08Xh\n",  errorCode);
-        goto Done1;
-    }
-
-    // Display some information on the driver api type.
-    switch(DeviceInfo->DriverID)
-    {
-    case KUSB_DRVID_LIBUSBK:
-        printf("libusbK driver api loaded!\n");
-        break;
-    case KUSB_DRVID_LIBUSB0:
-        printf("libusb0 driver api loaded!\n");
-        break;
-    case KUSB_DRVID_WINUSB:
-        printf("WinUSB driver api loaded!\n");
-        break;
-    case KUSB_DRVID_LIBUSB0_FILTER:
-        printf("libusb0/filter driver api loaded!\n");
-        break;
-    }
-
-    /*
-    From this point forth, do not use the exported "UsbK_" functions. Instead,
-    use the functions in the driver api initialized above.
-    */
-
-    // Initialize the device with the "dynamic" Open function
-    if (!Usb.Init(&handle, DeviceInfo))
-    {
-        errorCode = GetLastError();
-        printf("Usb.Init failed. ErrorCode: %08Xh\n",  errorCode);
-        goto Done1;
-    }
-    printf("Device opened successfully!\n");
-
-	BufferLength = sizeof(Buffer);
-	if(!Usb.QueryDeviceInformation( handle, DEVICE_SPEED, &BufferLength, Buffer))
-	{
-		errorCode = GetLastError();
-		printf("UsbK_QueryDeviceInformation failed. ErrorCode: %08Xh\n",  errorCode);
-		goto Done1;
-	}
-	if(Buffer[0] == 0x3)
-	{
-		printf("Device speed: high\n");
-	}
-	else
-	{
-		printf("Device speed: low/full\n");
-	}
-
-	if(!Usb.GetDescriptor( handle, USB_DESCRIPTOR_TYPE_DEVICE, 0, 0, (PUCHAR)&deviceDescriptor, sizeof(deviceDescriptor), &LengthTransferred))
-	{
-		errorCode = GetLastError();
-		printf("UsbK_GetDescriptor failed. ErrorCode: %08Xh\n",  errorCode);
-		goto Done1;
-	}
-
-	if(!Usb.GetDescriptor( handle, USB_DESCRIPTOR_TYPE_CONFIGURATION, 0, 0, Buffer, sizeof(Buffer), &LengthTransferred))
-	{
-		errorCode = GetLastError();
-		printf("UsbK_GetDescriptor failed. ErrorCode: %08Xh\n",  errorCode);
-		goto Done1;
-	}
-
-	memcpy(&configurationDescriptor, Buffer, sizeof(USB_CONFIGURATION_DESCRIPTOR));
-
-	BOOL r;
-/*
-	GetRangeFreq(handle, 1, 5);
-	int freq = GetCurrentFreq(handle, 1, 5);
-	r = SetCurrentFreq(handle, 1, 5, 44100);
-	freq = GetCurrentFreq(handle, 1, 5);
-	r = SetCurrentFreq(handle, 1, 5, 48000);
-*/
-
-    printf("Try found output pipe id %X and feedback id %X\n", EP_TRANSFER_OUT, EP_TRANSFER_IN);
-
-    UCHAR interfaceIndex = (UCHAR) - 1;
-    while(gPipeInfoRead.PipeId == 0 && gPipeInfoWrite.PipeId == 0 && 
-		Usb.SelectInterface(handle, ++interfaceIndex, TRUE))
-    {
-        memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
-        UCHAR gAltsettingNumber = (UCHAR) - 1;
-        while(Usb.QueryInterfaceSettings(handle, ++gAltsettingNumber, &interfaceDescriptor))
-        {
-            UCHAR pipeIndex = (UCHAR) - 1;
-            while(Usb.QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoRead))
-            {
-		        printf("Pipe id %x found.\n", gPipeInfoRead.PipeId);
-                if (gPipeInfoRead.PipeId != EP_TRANSFER_IN || gPipeInfoRead.PipeType != UsbdPipeTypeIsochronous)
-	                memset(&gPipeInfoRead, 0, sizeof(gPipeInfoRead));
-				else
-					break;
-            }
-            pipeIndex = (UCHAR) - 1;
-            while(Usb.QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoWrite))
-            {
-                if (gPipeInfoWrite.PipeId != EP_TRANSFER_OUT || gPipeInfoWrite.PipeType != UsbdPipeTypeIsochronous)
-	                memset(&gPipeInfoWrite, 0, sizeof(gPipeInfoWrite));
-				else
-					break;
-            }
-            if (gPipeInfoRead.PipeId && gPipeInfoWrite.PipeId) break;
-            memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
-        }
-    }
-
-    if (!gPipeInfoRead.PipeId)
-    {
-        printf("Input pipe not found.\n");
-        goto Done1;
-    }
-    if (!gPipeInfoWrite.PipeId)
-    {
-        printf("Output pipe not found.\n");
-        goto Done1;
-    }
-
-	r = Usb.ClaimInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE);
-	r = Usb.SetAltInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE, interfaceDescriptor.bAlternateSetting); 
-
-
-	int freq = 48000;
-	if(argc > 1) 
-		freq = atoi(argv[1]);
-
-	r = SetCurrentFreq(handle, 1, 5, freq);
-	freq = GetCurrentFreq(handle, 1, 5);
-
-    printf("Using freq=%d\n", freq);
-
-	int packetSize = 4 * freq / 1000 / (1 << (gPipeInfoWrite.Interval - 1)) + 8;
-
-	readtask = new AudioTask(handle, &gPipeInfoRead, 16, gPipeInfoRead.MaximumPacketSize, gPipeInfoRead.MaximumPacketSize, TRUE);
-	writetask = new AudioTask(handle, &gPipeInfoWrite, 32, packetSize, (float)freq / 1000.f, FALSE);
-
-    printf("Press any key for exit.\n");
-
-	readtask->Start();
-	writetask->Start();
-
-	_getch();
-	writetask->Stop();
-	readtask->Stop();
-
-Done1:
-	if(interfaceDescriptor.bLength != 0)
-	{
-		r = Usb.SetAltInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE, 0);
-		r = Usb.ReleaseInterface(handle, interfaceDescriptor.bInterfaceNumber, FALSE);
-	}
-
-	if(writetask)
-		delete writetask;
-
-	if(readtask)
-		delete readtask;
-
-    // Close the device handle
-    // if handle is invalid (NULL), has no effect
-    UsbK_Free(handle);
-
-    // Free the device list
-    // if deviceList is invalid (NULL), has no effect
-    LstK_Free(DeviceList);
+	_CrtDumpMemoryLeaks();
 
 	return 0;
 }

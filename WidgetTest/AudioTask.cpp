@@ -44,43 +44,37 @@
 #include <math.h>
 #include "AudioTask.h"
 
-#define MAX_OUTSTANDING_TRANSFERS   6
+extern void debugPrintf(const char *szFormat, ...);
 
-extern KUSB_DRIVER_API Usb;
+AudioSample3 dummybuffer3[48];
+AudioSample4 dummybuffer4[48];
 
-
-struct AudioSample
-{
-	int left;
-	int right;
-};
-
-AudioSample dummybuffer[48];
 DWORD globalReadBuffer = 0;
 DWORD globalPacketCounter = 0;
 
-void FillBuffer()
+void FillBuffer4()
 {
-	memset(dummybuffer, 0, 48*sizeof(AudioSample));
+	memset(dummybuffer4, 0, 48*sizeof(AudioSample4));
 	for(int i = 0; i < 48; i++)
 	{
-		dummybuffer[i].left = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
-		dummybuffer[i].right = dummybuffer[i].left;
+		dummybuffer4[i].left = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
+		dummybuffer4[i].right = dummybuffer4[i].left;
 
-		dummybuffer[i].left = dummybuffer[i].left << 8;
-		dummybuffer[i].right = dummybuffer[i].right << 8;
+		dummybuffer4[i].left = dummybuffer4[i].left << 8;
+		dummybuffer4[i].right = dummybuffer4[i].right << 8;
 	}
+	globalReadBuffer = 0;
 }
 
-void FillData(UCHAR *buffer, int len)
+void FillData4(void*, UCHAR *buffer, int& len)
 {
-	AudioSample *sampleBuff = (AudioSample *)buffer;
-	int sampleLength = len / sizeof(AudioSample);
+	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
+	int sampleLength = len / sizeof(AudioSample4);
 
 	for(int i = 0; i < sampleLength; i++)
 	{
-		sampleBuff[i].left =  dummybuffer[globalReadBuffer].left;
-		sampleBuff[i].right = dummybuffer[globalReadBuffer].right;
+		sampleBuff[i].left =  dummybuffer4[globalReadBuffer].left;
+		sampleBuff[i].right = dummybuffer4[globalReadBuffer].right;
 		globalReadBuffer++;
 		if(globalReadBuffer >= 48)
 			globalReadBuffer = 0;
@@ -91,124 +85,124 @@ void FillData(UCHAR *buffer, int len)
 }
 
 
+void FillBuffer3()
+{
+	memset(dummybuffer3, 0, 48*sizeof(AudioSample3));
+	for(int i = 0; i < 48; i++)
+	{
+		int val = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
+		dummybuffer3[i].left = val;
+		dummybuffer3[i].right = dummybuffer3[i].left;
+
+		dummybuffer3[i].left = dummybuffer3[i].left << 8;
+		dummybuffer3[i].right = dummybuffer3[i].right << 8;
+	}
+	globalReadBuffer = 0;
+}
+
+void FillData3(void*, UCHAR *buffer, int& len)
+{
+	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
+	int sampleLength = len / sizeof(AudioSample3);
+
+	for(int i = 0; i < sampleLength; i++)
+	{
+		sampleBuff[i].left =  dummybuffer3[globalReadBuffer].left;
+		sampleBuff[i].right = dummybuffer3[globalReadBuffer].right;
+		globalReadBuffer++;
+		if(globalReadBuffer >= 48)
+			globalReadBuffer = 0;
+	}
+	globalPacketCounter++;
+	if(globalPacketCounter > 0xFF)
+		globalPacketCounter = 0;
+}
+
 FeedbackInfo globalFeedbackInfo;
 
-AudioTask::AudioTask(KUSB_HANDLE hdl, WINUSB_PIPE_INFORMATION* pipeInfo, int ppt, int ps, float defPacketSize, BOOL isRead) : 
+#define NEXT_INDEX(x)		((x + 1) % (sizeof(m_isoBuffers) / sizeof(ISOBuffer)))
+
+AudioTask::AudioTask(KUSB_HANDLE hdl, WINUSB_PIPE_INFORMATION* pipeInfo, int ppt, int ps, float defPacketSize, BOOL isRead, int sampleSize) : 
 	handle(hdl), gPipeInfo(pipeInfo), 
-		packetPerTransfer(ppt), packetSize(ps), defaultPacketSize(defPacketSize), isReadTask(isRead)
+		m_packetPerTransfer(ppt), 
+		m_packetSize(ps), 
+		m_defaultPacketSize(defPacketSize), 
+		m_isReadTask(isRead),
+
+		m_SubmittedCount(0),
+		m_CompletedCount(0),
+		m_FrameNumber(0),
+		m_LastStartFrame(0),
+		m_outstandingIndex(0),
+		m_completedIndex(0),
+		m_sampleSize(sampleSize)
+
 {
-	memset(&gXfers, 0, sizeof(gXfers));
-    gXfers.DataBufferSize = packetPerTransfer * packetSize;
+	m_DataBufferSize = m_packetPerTransfer * m_packetSize;
+	if(m_sampleSize == 3)
+	{
+		m_fillDataFunc = FillData3;
+		m_iniDataFunc = FillBuffer3;
+	}
+	else
+		if(m_sampleSize == 4)
+		{
+			m_fillDataFunc = FillData4;
+			m_iniDataFunc = FillBuffer4;
+		}
 }
 
 AudioTask::~AudioTask(void)
 {
 }
 
-
-void AudioTask::DL_APPEND(PMY_ISO_BUFFER_EL &head, PMY_ISO_BUFFER_EL &add)
-{
-	if (head) 
-	{
-		add->prev = head->prev;
-		head->prev->next = add;
-		head->prev = add;      
-		add->next = NULL;        
-	} else 
-	{      
-		head=add;
-		head->prev = head;
-		head->next = NULL;
-	}                       
-}
-
-
-void AudioTask::DL_DELETE(PMY_ISO_BUFFER_EL &head,PMY_ISO_BUFFER_EL &del)
-{                      
-	if (del->prev == del)
-	{
-		head = NULL;
-	}
-	else
-		if (del == head)
-		{
-			if(del->next)
-				del->next->prev = del->prev;
-			head = del->next;
-		}
-		else
-		{
-			del->prev->next = del->next;
-			if (del->next)
-			{
-				del->next->prev = del->prev;
-			}
-			else
-			{
-				head->prev = del->prev;
-			}
-		}
-}
-
-/*
-Reports isochronous packet information.
-*/
-void AudioTask::IsoXferComplete(PMY_ISO_XFERS myXfers, PMY_ISO_BUFFER_EL myBufferEL, ULONG transferLength)
-{
-	myXfers->CompletedCount++;
-	myXfers->LastStartFrame = myBufferEL->IsoContext->StartFrame;
-}
-
-
 void AudioTask::Start()
 {
 	if(IsWork())
 	{
-#ifdef _DEBUG_PRINT
-		DebugPrintf("Can't start AudioTask thread: already started");
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Can't start AudioTask thread: already started\n");
 #endif
 		return;
 	}
 
-    BOOL r = OvlK_Init(&gXfers.OvlPool, handle, MAX_OUTSTANDING_TRANSFERS, KOVL_POOL_FLAG_NONE);
+    BOOL r = OvlK_Init(&m_OvlPool, handle, MAX_OUTSTANDING_TRANSFERS, KOVL_POOL_FLAG_NONE);
 	if(!r)
 	{
-#ifdef _DEBUG_PRINT
-		DebugPrintf("Can't start AudioTask thread: OvlK_Init failed");
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Can't start AudioTask thread: OvlK_Init failed\n");
 #endif
 		return;
 	}
 
-    for (int pos = 0; pos < MAX_OUTSTANDING_TRANSFERS; pos++)
-    {
-        PMY_ISO_BUFFER_EL bufferEL = (PMY_ISO_BUFFER_EL)malloc(sizeof(MY_ISO_BUFFER_EL));
-        memset(bufferEL, 0, sizeof(*bufferEL));
-		
-        bufferEL->DataBuffer = (PUCHAR)malloc(gXfers.DataBufferSize);
-        memset(bufferEL->DataBuffer, 0xAA, gXfers.DataBufferSize);
+	m_SubmittedCount = 0;
+	m_CompletedCount = 0;
+	m_FrameNumber = 0;
+	m_LastStartFrame = 0;
 
-        IsoK_Init(&bufferEL->IsoContext, packetPerTransfer, 0);
-        IsoK_SetPackets(bufferEL->IsoContext, packetSize);
-
-        //bufferEL->IsoContext->Flags = KISO_FLAG_SET_START_FRAME;
-
+	for(int i = 0; i < sizeof(m_isoBuffers) / sizeof(ISOBuffer); i++)
+	{
+        ISOBuffer* bufferEL = m_isoBuffers + i;
+        bufferEL->DataBuffer = new UCHAR[m_DataBufferSize];
+        memset(bufferEL->DataBuffer, 0xAA, m_DataBufferSize);
+        IsoK_Init(&bufferEL->IsoContext, m_packetPerTransfer, 0);
+        IsoK_SetPackets(bufferEL->IsoContext, m_packetSize);
         bufferEL->IsoPackets = bufferEL->IsoContext->IsoPackets;
-        OvlK_Acquire(&bufferEL->OvlHandle, gXfers.OvlPool);
+        OvlK_Acquire(&bufferEL->OvlHandle, m_OvlPool);
+	}
+	m_outstandingIndex = 0;
+	m_completedIndex = 0;
 
-        DL_APPEND(gXfers.BufferList, bufferEL);
-        DL_APPEND(gXfers.Completed, bufferEL);
-    }
+
     // Reset the pipe.
-    Usb.ResetPipe(handle, (UCHAR)gPipeInfo->PipeId);
-
-	nextFrameSize = packetSize;
+    UsbK_ResetPipe(handle, (UCHAR)gPipeInfo->PipeId);
 
 	UCHAR policyValue = 1;
-	if(!isReadTask)
+	if(!m_isReadTask)
 	{
-		Usb.SetPipePolicy(handle, (UCHAR)gPipeInfo->PipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue);
-		FillBuffer();
-		globalReadBuffer = 0;
+		UsbK_SetPipePolicy(handle, (UCHAR)gPipeInfo->PipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue);
+		if(m_iniDataFunc)
+			m_iniDataFunc();
 	}
 	else
 	{
@@ -218,11 +212,12 @@ void AudioTask::Start()
 		//gXfers.FrameNumber += ISO_PACKETS_PER_XFER * 2;
 		//gXfers.FrameNumber -= gXfers.FrameNumber % ISO_PACKETS_PER_XFER;
 	}
-	errorCode = ERROR_SUCCESS;
+	m_errorCode = ERROR_SUCCESS;
 
-#ifdef _DEBUG_PRINT
-	DebugPrintf("Start AudioTask thread\n");
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Start AudioTask thread\n");
 #endif
+	Sleep(100);
 	SimpleWorker::Start();
 }
 
@@ -230,44 +225,40 @@ void AudioTask::Stop()
 {
 	if(!IsWork())
 	{
-#ifdef _DEBUG_PRINT
-		DebugPrintf("Can't stop AudioTask thread: already stopped");
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Can't stop AudioTask thread: already stopped\n");
 #endif
 		return;
 	}
-#ifdef _DEBUG_PRINT
-	DebugPrintf("Stop AudioTask thread");
-	DebugPrintf("Stop AudioTask thread\n");
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Stop AudioTask thread\n");
 #endif
 	SimpleWorker::Stop();
 
-	Usb.AbortPipe(handle, gPipeInfo->PipeId);
+	UsbK_AbortPipe(handle, gPipeInfo->PipeId);
 
     //  Cancel all transfers left outstanding.
-    while(gXfers.Outstanding)
+    while(m_completedIndex != m_outstandingIndex)
     {
-        PMY_ISO_BUFFER_EL nextBufferEL = gXfers.Outstanding;
+        ISOBuffer* nextBufferEL = m_isoBuffers + m_completedIndex;
         ULONG transferred;
-
-        OvlK_WaitOrCancel(nextBufferEL->OvlHandle, 0, &transferred);
-        DL_DELETE(gXfers.Outstanding, nextBufferEL);
+		OvlK_WaitOrCancel(nextBufferEL->OvlHandle, 0, &transferred);
+		m_completedIndex = NEXT_INDEX(m_completedIndex);
     }
+	for(int i = 0; i < sizeof(m_isoBuffers) / sizeof(ISOBuffer); i++)
+	{
+		//  Free the iso buffer resources.
+		ISOBuffer* bufferEL = m_isoBuffers + i;
+		OvlK_Release(bufferEL->OvlHandle);
+        IsoK_Free(bufferEL->IsoContext);
+		bufferEL->IsoContext = NULL;
+        delete bufferEL->DataBuffer;
+		bufferEL->DataBuffer = NULL;
+	}
+	m_outstandingIndex = 0;
+	m_completedIndex = 0;
 
-    //  Free the iso buffer resources.
-    while(gXfers.BufferList)
-    {
-        PMY_ISO_BUFFER_EL nextBufferEL = gXfers.BufferList;
-        DL_DELETE(gXfers.BufferList, nextBufferEL);
-
-        OvlK_Release(nextBufferEL->OvlHandle);
-        IsoK_Free(nextBufferEL->IsoContext);
-        free(nextBufferEL->DataBuffer);
-        free(nextBufferEL);
-    }
-
-    // Free the overlapped pool.
-    OvlK_Free(gXfers.OvlPool);
-
+    OvlK_Free(m_OvlPool);
 }
 
 bool AudioTask::DoWork()
@@ -275,25 +266,21 @@ bool AudioTask::DoWork()
 	try
 	{
 		BOOL r;
-		PMY_ISO_BUFFER_EL nextXfer;
+		ISOBuffer* nextXfer;
 		ULONG transferred;
 		float nextOffSet = 0;
 		int dataLength = 0;
+		float cur_feedback = 0;
 
-		while(errorCode == ERROR_SUCCESS &&	gXfers.Completed)
+		while(m_errorCode == ERROR_SUCCESS &&	NEXT_INDEX(m_outstandingIndex) != m_completedIndex)
 		{
-			if(nextFrameSize == packetSize)
-				nextFrameSize -= 8;
-			else
-				nextFrameSize += 8;
+			nextXfer = m_isoBuffers + m_outstandingIndex;;
 
-			nextXfer = gXfers.Completed;
-
-			if(!isReadTask)
+			if(!m_isReadTask)
 			{
-				float cur_feedback = 2.0f * globalFeedbackInfo.GetValue(); //value in samples
-				if(cur_feedback > packetSize)
-					cur_feedback = packetSize;
+				cur_feedback = 2.0f * globalFeedbackInfo.GetValue(); //value in samples
+				if(cur_feedback > m_packetSize)
+					cur_feedback = (float)m_packetSize;
 				nextOffSet = 0;
 				if(cur_feedback > 0)
 				{
@@ -303,93 +290,110 @@ bool AudioTask::DoWork()
 						nextXfer->IsoContext->IsoPackets[packetIndex].Offset = (int)nextOffSet;
 						nextOffSet += cur_feedback;
 						// trunk offset to integer number of stereo sample
-						nextOffSet += 4;
-						nextOffSet = (int)nextOffSet - ((int)nextOffSet % 8);
+						nextOffSet += (float)m_sampleSize;
+						nextOffSet = (float)((int)nextOffSet - ((int)nextOffSet % (2 * m_sampleSize)));
 					}
 					dataLength = (int)nextOffSet;
-					//dataLength = (int)nextOffSet + 4;
-					//dataLength = dataLength - (dataLength % 8);
-
-					FillData(nextXfer->DataBuffer, dataLength);
-					printf("Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\r",  cur_feedback, (float)dataLength/8.f, dataLength);
+					if(m_fillDataFunc)
+					{
+						m_fillDataFunc(NULL, nextXfer->DataBuffer, dataLength);
+					}
 				}
 				else
 				{
-					dataLength = defaultPacketSize * packetPerTransfer;
+					dataLength = (int)(m_defaultPacketSize * (float)m_packetPerTransfer);
+/*
+					if(isUAC1)
+					{
+						FillData3(nextXfer->DataBuffer, dataLength);
+						printf("Transfer w/o: feedback send %.1f samples, transfer length=%d\r",  (float)dataLength/6.f, dataLength);
+					}
+					else
+					{
+						FillData4(nextXfer->DataBuffer, dataLength);
+						printf("Transfer: w/o feedback send %.1f samples, transfer length=%d\r",  (float)dataLength/8.f, dataLength);
+					}
+*/
 					memset(nextXfer->DataBuffer, 0, dataLength);
 				}
 			}
 
-			DL_DELETE(gXfers.Completed, nextXfer);
-			DL_APPEND(gXfers.Outstanding, nextXfer);
+			m_outstandingIndex = NEXT_INDEX(m_outstandingIndex);
 			OvlK_ReUse(nextXfer->OvlHandle);
 
-			SetNextFrameNumber(&gXfers, nextXfer);
+			SetNextFrameNumber(nextXfer);
 
-			if(isReadTask)
-				r = Usb.IsoReadPipe(
+			if(m_isReadTask)
+				r = UsbK_IsoReadPipe(
 						  handle,
 						  gPipeInfo->PipeId,
 						  nextXfer->DataBuffer,
-						  gXfers.DataBufferSize,
+						  m_DataBufferSize,
 						  (LPOVERLAPPED)nextXfer->OvlHandle,
 						  nextXfer->IsoContext);
 			else
-				r = Usb.IsoWritePipe(
+			{
+				r = UsbK_IsoWritePipe(
 						  handle,
 						  gPipeInfo->PipeId,
 						  nextXfer->DataBuffer,
-						  dataLength, //packetPerTransfer * nextFrameSize,
+						  dataLength,
 						  (LPOVERLAPPED)nextXfer->OvlHandle,
 						  nextXfer->IsoContext);
+				//printf("Transfer transfer length=%d, result=%d\n", dataLength, (int)r);
+			}
 
-			errorCode = GetLastError();
-			if (errorCode != ERROR_IO_PENDING) 
+			m_errorCode = GetLastError();
+			if (m_errorCode != ERROR_IO_PENDING) 
 			{
-				printf("IsoReadPipe/IsoWritePipe failed. ErrorCode: %08Xh\n",  errorCode);
+				printf("IsoReadPipe/IsoWritePipe failed. ErrorCode: %08Xh\n",  m_errorCode);
 				return FALSE;
 			}
-			errorCode = ERROR_SUCCESS;
+			m_errorCode = ERROR_SUCCESS;
 		}
 
-		nextXfer = gXfers.Outstanding;
-		if (!nextXfer) 
-		{
-			printf("Done!\n");
-			return TRUE;
-		}
-
+		nextXfer = m_isoBuffers + m_completedIndex;
 		r = OvlK_Wait(nextXfer->OvlHandle, 1000, KOVL_WAIT_FLAG_NONE, &transferred);
 		if (!r) 
 		{
-			//printf("OvlK_Wait failed. ErrorCode: %08Xh\n",  GetLastError());
+#ifdef _DEBUG
+			if(m_isReadTask)
+				debugPrintf("ASIOUAC: OvlK_Wait failed while read. ErrorCode: %08Xh\n",  GetLastError());
+			else
+				debugPrintf("ASIOUAC: OvlK_Wait failed while write. ErrorCode: %08Xh\n",  GetLastError());
+#endif
 /*
-			errorCode = GetLastError();
-			printf("OvlK_Wait failed. ErrorCode: %08Xh\n",  errorCode);
+			m_errorCode = GetLastError();
+			printf("OvlK_Wait failed. ErrorCode: %08Xh\n",  m_errorCode);
 			return FALSE;
 */
 		}
-		DL_DELETE(gXfers.Outstanding, nextXfer);
-		DL_APPEND(gXfers.Completed, nextXfer);
+		IsoXferComplete(nextXfer, transferred);
+		IsoXferComplete(nextXfer, transferred);
+		m_completedIndex = NEXT_INDEX(m_completedIndex);
 
-		IsoXferComplete(&gXfers, nextXfer, transferred);
-		if(isReadTask)
+		if(m_isReadTask)
 		{
 			KISO_PACKET isoPacket = nextXfer->IsoPackets[nextXfer->IsoContext->NumberOfPackets - 1];
 			if (isoPacket.Length > 1)
 			{
-				int feedback = *((int*)(nextXfer->DataBuffer + isoPacket.Offset));
+				int feedback = 0;
+				if(m_sampleSize == 3)
+					feedback = (nextXfer->DataBuffer[isoPacket.Offset]) + (nextXfer->DataBuffer[isoPacket.Offset + 1] << 8) + (nextXfer->DataBuffer[isoPacket.Offset + 2] << 16);
+				else
+					if(m_sampleSize == 3)
+						feedback = *((int*)(nextXfer->DataBuffer + isoPacket.Offset));
 				globalFeedbackInfo.SetValue(feedback);
-				//printf("New feedback value: %d\n",  feedback);
+				//printf("New feedback value: %f\n",  globalFeedbackInfo.GetValue());
 			}
 		}
 	}
 	catch (...)
 	{
-#ifdef _DEBUG_PRINT
-		DebugPrintf("Catch exception in DeviceManager::DoWork()!\n");
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Catch exception in DeviceManager::DoWork()!\n");
 #endif
 	}
-	return errorCode == ERROR_SUCCESS;
+	return m_errorCode == ERROR_SUCCESS;
 }
 

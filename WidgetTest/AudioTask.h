@@ -40,9 +40,10 @@
 // Contains parts from LibUsbK examples by Travis Lee Robinson (http://libusb-win32.sourceforge.net/libusbKv3/)
 
 #pragma once
+#include <crtdbg.h>
+
 #include "primitives.h"
 #include "libusbk.h"
-
 
 class FeedbackInfo
 {
@@ -70,86 +71,87 @@ public:
 	}
 };
 
+#define MAX_OUTSTANDING_TRANSFERS	6
+
+typedef void (*FillDataCallback)(void* context, UCHAR *buffer, int& len);
+typedef void (*InitDataFunction)();
+
+struct AudioSample4
+{
+	int left;
+	int right;
+};
+
+struct ThreeByteSample
+{
+	char sample[3];
+	ThreeByteSample(int val = 0)
+	{
+		sample[0] = (val >> 16) & 0xff;
+		sample[1] = (val >> 0) & 0xff;
+		sample[2] = (val >> 8) & 0xff;
+	}
+
+	operator int()const
+	{
+		return (sample[0]) + (sample[1] << 8) + (sample[2] << 16);
+	}
+};
+
+struct AudioSample3
+{
+	ThreeByteSample left;
+	ThreeByteSample right;
+};
+
 class AudioTask :
 	public SimpleWorker
 {
 	// one buffer element
-	typedef struct _MY_ISO_BUFFER_EL
+	struct ISOBuffer
 	{
 		PUCHAR          DataBuffer;
 		KOVL_HANDLE     OvlHandle;
 
 		KISO_CONTEXT*   IsoContext;
 		KISO_PACKET*    IsoPackets;
+	};
 
-		struct _MY_ISO_BUFFER_EL* prev;
-		struct _MY_ISO_BUFFER_EL* next;
+	KOVL_POOL_HANDLE    m_OvlPool;
+	ULONG               m_DataBufferSize;
+	ULONG               m_SubmittedCount;
+	ULONG               m_CompletedCount;
+	ULONG               m_FrameNumber;
+	ULONG				m_LastStartFrame;
 
-	} MY_ISO_BUFFER_EL, *PMY_ISO_BUFFER_EL;
+	ISOBuffer			m_isoBuffers[MAX_OUTSTANDING_TRANSFERS];
+	int					m_outstandingIndex;
+	int					m_completedIndex;
 
-	// buffer list
-	typedef struct _MY_ISO_XFERS
+	int					m_sampleSize;
+
+	void SetNextFrameNumber(ISOBuffer* buffer)
 	{
-		KOVL_POOL_HANDLE    OvlPool;
-		PMY_ISO_BUFFER_EL   BufferList;
-
-		ULONG               DataBufferSize;
-
-		PMY_ISO_BUFFER_EL   Outstanding;
-		PMY_ISO_BUFFER_EL   Completed;
-
-		ULONG               SubmittedCount;
-		ULONG               CompletedCount;
-
-		ULONG               FrameNumber;
-
-		ULONG LastStartFrame;
-
-	} MY_ISO_XFERS, *PMY_ISO_XFERS;
-
-
-	//! Adds an element to the end of a linked list.
-	/*!
-	* \param head
-	* First element of the list.
-	*
-	* \param add
-	* Element to add.
-	*/
-	void DL_APPEND(PMY_ISO_BUFFER_EL &head, PMY_ISO_BUFFER_EL &add);
-
-	//! Removes an element from a linked list.
-	/*!
-	*
-	* \param head
-	* First element of the list.
-	*
-	* \param del
-	* Element to remove.
-	*
-	* \attention
-	* \c DL_DELETE does not free or de-allocate memory.
-	* It "de-links" the element specified by \c del from the list.
-	*/
-	void DL_DELETE(PMY_ISO_BUFFER_EL &head,PMY_ISO_BUFFER_EL &del);
-
-	VOID SetNextFrameNumber(PMY_ISO_XFERS myXfers, PMY_ISO_BUFFER_EL myBufferEL)
-	{
-		myBufferEL->IsoContext->StartFrame = myXfers->FrameNumber;
-		myXfers->FrameNumber = myXfers->FrameNumber + (8);
+		buffer->IsoContext->StartFrame = m_FrameNumber;
+		m_FrameNumber++;
 	}
 
-	/*
-	Reports isochronous packet information.
-	*/
-	void IsoXferComplete(PMY_ISO_XFERS myXfers, PMY_ISO_BUFFER_EL myBufferEL, ULONG transferLength);
+	void IsoXferComplete(ISOBuffer* buffer, ULONG transferLength)
+	{
+		m_CompletedCount++;
+		m_LastStartFrame = buffer->IsoContext->StartFrame;
+	}
+
+
+	FillDataCallback	m_fillDataFunc;
+	InitDataFunction	m_iniDataFunc;
 
 protected:
 	// main function
 	virtual bool DoWork();
 
 public:
-	AudioTask(KUSB_HANDLE hdl, WINUSB_PIPE_INFORMATION* pipeInfo, int ppt, int ps, float defPacketSize, BOOL isRead);
+	AudioTask(KUSB_HANDLE hdl, WINUSB_PIPE_INFORMATION* pipeInfo, int ppt, int ps, float defPacketSize, BOOL isRead, int sampleSize);
 	~AudioTask(void);
 
 	virtual void Start();
@@ -157,13 +159,12 @@ public:
 
 private:
 	KUSB_HANDLE handle;
-	MY_ISO_XFERS gXfers;
 	WINUSB_PIPE_INFORMATION* gPipeInfo;
-	int packetPerTransfer;
-	int packetSize;
-	float defaultPacketSize;
-	DWORD errorCode;
-	BOOL isReadTask;
 
-	int nextFrameSize;
+	int				m_packetPerTransfer;
+	int				m_packetSize;
+	float			m_defaultPacketSize;
+	
+	DWORD			m_errorCode;
+	BOOL			m_isReadTask;
 };
