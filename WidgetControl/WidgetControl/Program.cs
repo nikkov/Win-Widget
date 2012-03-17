@@ -27,11 +27,28 @@ namespace WidgetControl
         /// Главная точка входа для приложения.
         /// </summary>
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new WidgetControl());
+            if (args.Length != 0)
+            {
+                WidgetControl widCtrl = new WidgetControl();
+                if (!widCtrl.InitializeDevice())
+                {
+                    MessageBox.Show(widCtrl.GetInfo(), "Error!");
+                    return;
+                }
+                if (!widCtrl.SetFeatureFromFile(args[0]))
+                {
+                    MessageBox.Show(widCtrl.GetInfo(), "Error!");
+                }
+                MessageBox.Show("Success", "Information");
+            }
+            else
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new WidgetControl());
+            }
         }
     }
 }
