@@ -264,6 +264,8 @@ namespace WidgetControl
 
         public bool SetFeatureFromFile(string fileName)
         {
+            bool needReset = false;
+            bool retValue;
             try
             {
                 if (!File.Exists(fileName))
@@ -289,6 +291,11 @@ namespace WidgetControl
                         }
                         string feature = str[0];
                         string value = str[1];
+                        if (feature.ToUpper() == "NEEDRESET" && value == "1")
+                        {
+                            needReset = true;
+                            continue;
+                        }
 
                         int featureIndex = GetFeatureIndex(feature);
                         if (featureIndex == -1)
@@ -321,6 +328,7 @@ namespace WidgetControl
                         i++;
                     }
                 }
+                retValue = true;
             }
             catch(Exception e)
             {
@@ -328,7 +336,11 @@ namespace WidgetControl
                 return false;
             }
 
-            return Save();
+            retValue &= Save();
+            if (needReset)
+                ResetDevice();
+
+            return retValue;
         }
 
         private void OnSave(object sender, EventArgs e)
@@ -366,11 +378,16 @@ namespace WidgetControl
 
         private void OnReset(object sender, EventArgs e)
         {
-            bool success = SendUsbControl(interfaceNumber, (byte)BMREQUEST_DIR.DEVICE_TO_HOST, (byte)BMREQUEST_TYPE.VENDOR,
+            ResetDevice();
+            System.Threading.Thread.Sleep(5000);
+            InitializeDevice();
+        }
+
+        private bool ResetDevice()
+        {
+            return SendUsbControl(interfaceNumber, (byte)BMREQUEST_DIR.DEVICE_TO_HOST, (byte)BMREQUEST_TYPE.VENDOR,
                 (byte)BMREQUEST_RECIPIENT.DEVICE, 0x0F, 0, 0,
                    globalBuffer, globalBufferLength, out LengthTransferred);
-            System.Threading.Thread.Sleep(5);
-            InitializeDevice();
         }
 
         private void OnFactReset(object sender, EventArgs e)
