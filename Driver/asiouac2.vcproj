@@ -48,7 +48,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;..\ASIO SDK\Common&quot;;&quot;..\libusbK-dev-kit\includes&quot;"
+				AdditionalIncludeDirectories="&quot;..\ASIO SDK\Common&quot;;&quot;..\libusbK-dev-kit\includes&quot;;..\uaclib"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -74,11 +74,11 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib winmm.lib libusbK.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib winmm.lib libusbK.lib uaclib.lib"
 				OutputFile=".\Debug/asiouac2.dll"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
-				AdditionalLibraryDirectories="&quot;..\libusbK-dev-kit\bin\lib\x86&quot;"
+				AdditionalLibraryDirectories="&quot;..\libusbK-dev-kit\bin\lib\x86&quot;;.\Debug"
 				ModuleDefinitionFile=".\asiouac2.def"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile=".\Debug/asiouac2.pdb"
@@ -146,7 +146,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories="&quot;..\ASIO SDK\Common&quot;;&quot;..\libusbK-dev-kit\includes&quot;"
+				AdditionalIncludeDirectories="&quot;..\ASIO SDK\Common&quot;;&quot;..\libusbK-dev-kit\includes&quot;;&quot;..\uaclib&quot;"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -171,11 +171,11 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib winmm.lib libusbK.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib winmm.lib libusbK.lib uaclib.lib"
 				OutputFile=".\Release/asiouac2.dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
-				AdditionalLibraryDirectories="&quot;..\libusbK-dev-kit\bin\lib\x86&quot;"
+				AdditionalLibraryDirectories="&quot;..\libusbK-dev-kit\bin\lib\x86&quot;;&quot;..\uaclib\Release&quot;"
 				ModuleDefinitionFile=".\asiouac2.def"
 				ProgramDatabaseFile=".\Release/asiouac2.pdb"
 				SubSystem="2"
@@ -240,10 +240,6 @@
 			</File>
 			<File
 				RelativePath=".\asiouac2.def"
-				>
-			</File>
-			<File
-				RelativePath=".\AudioTask.cpp"
 				>
 			</File>
 			<File
@@ -356,19 +352,11 @@
 				>
 			</File>
 			<File
-				RelativePath=".\AudioTask.h"
-				>
-			</File>
-			<File
 				RelativePath="..\ASIO SDK\common\combase.h"
 				>
 			</File>
 			<File
 				RelativePath="..\ASIO SDK\common\iasiodrv.h"
-				>
-			</File>
-			<File
-				RelativePath=".\primitives.h"
 				>
 			</File>
 		</Filter>

@@ -22,22 +22,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "asiouac2.h"
-#include "AudioTask.h"
 
 #define _DeviceInterfaceGUID "{09e4c63c-ce0f-168c-1862-06410a764a35}"
 
-void debugPrintf(const char *szFormat, ...)
-{
-    char str[4096];
-    va_list argptr;
-    va_start(argptr, szFormat);
-    vsprintf(str, szFormat, argptr);
-    va_end(argptr);
-
-    OutputDebugString(str);
-}
-
-
+extern void debugPrintf(const char *szFormat, ...);
 
 //------------------------------------------------------------------------------------------
 
@@ -144,38 +132,21 @@ HRESULT _stdcall DllUnregisterServer()
 //------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------
 AsioUAC2::AsioUAC2 (LPUNKNOWN pUnk, HRESULT *phr)
-	: CUnknown("ASIOUAC2", pUnk, phr)
+	: CUnknown("ASIOUAC2", pUnk, phr), callbacks(NULL), inputBuffers(NULL), outputBuffers(NULL), inMap(NULL), outMap(NULL), m_device(NULL)
+
 
 //------------------------------------------------------------------------------------------
 
 #else
 
 // when not on windows, we derive from AsioDriver
-AsioUAC2::AsioUAC2 () : AsioDriver ()
+AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outputBuffers(NULL), inMap(NULL), outMap(NULL), m_device(NULL)
 
 #endif
 {
-	long i;
-//---------------- USB related ---------------------//
-	deviceList = NULL;
-	handle = NULL;
-	deviceInfo = NULL;
-
-	outputTask = NULL;
-	feedbackTask = NULL;
-
-	deviceMutex = NULL;
-
-	USBAudioClass = USBAudioClassUnknown;
-
-	memset(&deviceDescriptor, 0, sizeof(USB_DEVICE_DESCRIPTOR));
-	memset(&configurationDescriptor, 0, sizeof(USB_CONFIGURATION_DESCRIPTOR));
-	memset(&gPipeInfoFeedback, 0, sizeof(WINUSB_PIPE_INFORMATION));
-	memset(&gPipeInfoWrite, 0, sizeof(WINUSB_PIPE_INFORMATION));
-
 // ASIO
 	//block number by default
-	blockFrames = kBlockFrames;
+	blockFrames = 32;
 
 	inputLatency = blockFrames;		// typically
 	outputLatency = blockFrames * 2;
@@ -183,29 +154,15 @@ AsioUAC2::AsioUAC2 () : AsioDriver ()
 	// typically blockFrames * 2; try to get 1 by offering direct buffer
 	// access, and using asioPostOutput for lower latency
 	samplePosition = 0;
-	sampleRate = DEFAULT_SAMPLE_RATE;
-	milliSeconds = (long)((double)(kBlockFrames * 1000) / sampleRate);
+	sampleRate = 48000;
+	milliSeconds = (long)((double)(blockFrames * 1000) / sampleRate);
 	active = false;
 	started = false;
 	timeInfoMode = false;
 	tcRead = false;
-#ifndef NO_INPUTS
-	for (i = 0; i < kNumInputs; i++)
-	{
-		inputBuffers[i] = 0;
-		inMap[i] = 0;
-	}
-#endif
-	for (i = 0; i < kNumOutputs; i++)
-	{
-		outputBuffers[i] = 0;
-		outMap[i] = 0;
-	}
-	callbacks = 0;
-#ifndef NO_INPUTS
-	activeInputs = 
-#endif
-	activeOutputs = 0;
+
+	m_NumInputs = m_NumOutputs = 0;
+	activeInputs = activeOutputs = 0;
 	toggle = 0;
 	//read position in buffer
 	currentBufferPosition = 0;
@@ -218,14 +175,7 @@ AsioUAC2::~AsioUAC2 ()
 	outputClose ();
 	inputClose ();
 	disposeBuffers ();
-
-    // Close the device handle
-    // if handle is invalid (NULL), has no effect
-    UsbK_Free(handle);
-
-    // Free the device list
-    // if deviceList is invalid (NULL), has no effect
-    LstK_Free(deviceList);
+	delete m_device;
 }
 
 //------------------------------------------------------------------------------------------
@@ -249,164 +199,8 @@ void AsioUAC2::getErrorMessage (char *string)
 //------------------------------------------------------------------------------------------
 ASIOBool AsioUAC2::init (void* sysRef)
 {
-	KLST_DEVINFO_HANDLE tmpDeviceInfo = NULL;
-	ULONG deviceCount = 0;
-    UCHAR interfaceIndex = (UCHAR) - 1;
-	USB_INTERFACE_DESCRIPTOR interfaceDescriptor;
-
-#ifdef _DEBUG
-	debugPrintf("ASIOUAC: ASIO driver init!");
-#endif
-
-	sysRef = sysRef;
-	if (active)
-	{
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: ASIO already active!");
-#endif
-		return true;
-	}
-
-	strcpy (errorMessage, "ASIO Driver open Failure!");
-//	libusbk initialize
-	// Get the device list
-	if (!LstK_Init(&deviceList, KLST_FLAG_NONE))
-	{
-		strcpy (errorMessage, "Error initializing libusbk device list!");
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Error initializing libusbk device list!");
-#endif
-		return false;
-	}
-
-	LstK_Count(deviceList, &deviceCount);
-	if (!deviceCount)
-	{
-		strcpy (errorMessage, "No connected libusbk device!");
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: No connected libusbk device!");
-#endif
-		SetLastError(ERROR_DEVICE_NOT_CONNECTED);
-		// If LstK_Init returns TRUE, the list must be freed.
-		LstK_Free(deviceList);
-		deviceList = NULL;
-		return false;
-	}
-
-	LstK_MoveReset(deviceList);
-	while(LstK_MoveNext(deviceList, &tmpDeviceInfo)
-		&& deviceInfo == NULL)
-	{
-		if(!_stricmp(tmpDeviceInfo->DeviceInterfaceGUID, _DeviceInterfaceGUID) && tmpDeviceInfo->Connected)
-		{
-			deviceInfo = tmpDeviceInfo;
-			break;
-		}
-	}
-
-	if (!deviceInfo)
-	{
-		sprintf(errorMessage, "Device with DeviceInterfaceGUID %s not found!", _DeviceInterfaceGUID);
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Device with DeviceInterfaceGUID %s not found!", _DeviceInterfaceGUID);
-#endif
-		// If LstK_Init returns TRUE, the list must be freed.
-		LstK_Free(deviceList);
-		deviceList = NULL;
-		return false;
-	}
-#ifdef _DEBUG
-	debugPrintf("ASIOUAC: Found device with DeviceInterfaceGUID %s!", _DeviceInterfaceGUID);
-#endif
-
-    // Initialize the device with the "dynamic" Open function
-    if (!UsbK_Init(&handle, deviceInfo))
-    {
-        sprintf(errorMessage, "Usb init failed. ErrorCode: %08Xh",  GetLastError());
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Usb init failed. ErrorCode: %08Xh",  GetLastError());
-#endif
-		// If LstK_Init returns TRUE, the list must be freed.
-		LstK_Free(deviceList);
-		deviceList = NULL;
-		return false;
-    }
-
-//todo: load this values from descriptors
-	audioControlInterfaceNum = AUDIO_CTRL_IFACE_NUM;
-	clockSourceId = CLOCK_SOURCE_ID;
-	//outEndpointNum = EP_TRANSFER_OUT;
-	//feedbackEndpointNum = EP_TRANSFER_FEEDBACK;
-
-	SetCurrentFreq(handle, audioControlInterfaceNum, clockSourceId, (int)sampleRate);
-	sampleRate = GetCurrentFreq(handle, audioControlInterfaceNum, clockSourceId);
-	if(sampleRate == 0.)
-	{
-		strcpy(errorMessage, "Error getting samplerate from device!");
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Error getting samplerate from device!");
-#endif
-		// Close the device handle
-		UsbK_Free(handle);
-		handle = NULL;
-		// If LstK_Init returns TRUE, the list must be freed.
-		LstK_Free(deviceList);
-		deviceList = NULL;
-		return false;
-	}
-#ifdef _DEBUG
-	else
-		debugPrintf("ASIOUAC: Set samplerate %d", (int)sampleRate);
-#endif
-
-	//found endpoints
-    while(gPipeInfoFeedback.PipeId == 0 && gPipeInfoWrite.PipeId == 0 && 
-		UsbK_SelectInterface(handle, ++interfaceIndex, TRUE))
-    {
-        memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
-        UCHAR gAltsettingNumber = (UCHAR) - 1;
-        while(UsbK_QueryInterfaceSettings(handle, ++gAltsettingNumber, &interfaceDescriptor))
-        {
-            UCHAR pipeIndex = (UCHAR) - 1;
-            while(UsbK_QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoFeedback))
-            {
-                if (USB_ENDPOINT_DIRECTION_OUT(gPipeInfoFeedback.PipeId) || gPipeInfoFeedback.PipeType != UsbdPipeTypeIsochronous)
-	                memset(&gPipeInfoFeedback, 0, sizeof(gPipeInfoFeedback));
-				else
-					break;
-            }
-            pipeIndex = (UCHAR) - 1;
-            while(UsbK_QueryPipe(handle, gAltsettingNumber, ++pipeIndex, &gPipeInfoWrite))
-            {
-                if (!USB_ENDPOINT_DIRECTION_OUT(gPipeInfoWrite.PipeId) || gPipeInfoWrite.PipeType != UsbdPipeTypeIsochronous)
-	                memset(&gPipeInfoWrite, 0, sizeof(gPipeInfoWrite));
-				else
-					break;
-            }
-            if (gPipeInfoFeedback.PipeId && gPipeInfoWrite.PipeId) break;
-            memset(&interfaceDescriptor, 0, sizeof(interfaceDescriptor));
-        }
-    }
-
-    if (!gPipeInfoFeedback.PipeId)
-    {
-		strcpy(errorMessage, "Input pipe not found!");
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Input pipe not found!");
-#endif
-        return false;
-    }
-    if (!gPipeInfoWrite.PipeId)
-    {
-		strcpy(errorMessage, "Output pipe not found!");
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Output pipe not found!");
-#endif
-        return false;
-    }
-	audioControlStreamNum = interfaceDescriptor.bInterfaceNumber;
-	audioControlStreamAltNum = interfaceDescriptor.bAlternateSetting;
-//	end libusbk initialize
+	m_device = new USBAudioDevice(TRUE);
+	m_device->InitDevice();
 
 	if (inputOpen ())
 	{
@@ -429,9 +223,13 @@ ASIOBool AsioUAC2::init (void* sysRef)
 #endif
 	}
 	//timerOff ();		// de-activate 'hardware'
-	
-	StopDevice();
+	//error
+	if(m_device)
+		m_device->Stop();
 
+	delete m_device;
+	m_device = NULL;
+	
 	outputClose ();
 	inputClose ();
 	return false;
@@ -447,6 +245,8 @@ ASIOError AsioUAC2::start ()
 #endif
 		return ASE_OK; //ASE_InvalidMode;
 	}
+	if(!m_device)
+		return ASE_HWMalfunction;
 
 	if (callbacks)
 	{
@@ -462,7 +262,7 @@ ASIOError AsioUAC2::start ()
 		return ASE_OK;
 #else
 		// activate hardware
-		ASIOError retVal = StartDevice();
+		ASIOError retVal = m_device->Start() ? ASE_OK : ASE_HWMalfunction;
 		if(retVal == ASE_OK)
 		{
 #ifdef _DEBUG
@@ -490,6 +290,8 @@ ASIOError AsioUAC2::stop ()
 #endif
 		return ASE_OK;//ASE_InvalidMode;
 	}
+	if(!m_device)
+		return ASE_HWMalfunction;
 
 #ifdef EMULATION_HARDWARE
 	timerOff ();		
@@ -497,7 +299,7 @@ ASIOError AsioUAC2::stop ()
 	return ASE_OK;
 #else
 	// de-activate hardware
-	ASIOError retVal = StopDevice();
+	ASIOError retVal = m_device->Stop() ? ASE_OK : ASE_HWMalfunction;
 	if(retVal == ASE_OK)
 	{
 #ifdef _DEBUG
@@ -515,12 +317,8 @@ ASIOError AsioUAC2::getChannels (long *numInputChannels, long *numOutputChannels
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: getChannels request");
 #endif
-#ifndef NO_INPUTS
-	*numInputChannels = kNumInputs;
-#else
-	*numInputChannels = 0;
-#endif
-	*numOutputChannels = kNumOutputs;
+	*numInputChannels = m_NumInputs;
+	*numOutputChannels = m_NumOutputs;
 	return ASE_OK;
 }
 
@@ -547,24 +345,14 @@ ASIOError AsioUAC2::getBufferSize (long *minSize, long *maxSize,
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::canSampleRate (ASIOSampleRate sampleRate)
 {
+	if(!m_device)
+		return ASE_HWMalfunction;
 	int iSampleRate = (int)sampleRate;
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: Checked samplerate %d", iSampleRate);
 #endif
-	if (iSampleRate == 44100 
-		|| iSampleRate == 48000
-		|| iSampleRate == 88200
-		|| iSampleRate == 96000
-		|| iSampleRate == 192000)		// allow these rates only
-	{
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Checked samplerate OK", iSampleRate);
-#endif
+	if(m_device->CanSampleRate(iSampleRate))
 		return ASE_OK;
-	}
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Checked samplerate failed", iSampleRate);
-#endif
 	return ASE_NoClock;
 }
 
@@ -581,24 +369,21 @@ ASIOError AsioUAC2::getSampleRate (ASIOSampleRate *sampleRate)
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 {
-#ifdef _DEBUG
-	debugPrintf("ASIOUAC: Try set samplerate %d", (int)sampleRate);
-#endif
-	if (sampleRate != 44100. 
-		&& sampleRate != 48000.
-		&& sampleRate != 88200.
-		&& sampleRate != 96000.
-		&& sampleRate != 192000.)
-		return ASE_NoClock;
+	if(!m_device)
+		return ASE_HWMalfunction;
+	int iSampleRate = (int)sampleRate;
 
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Try set samplerate %d", iSampleRate);
+#endif
 	if (sampleRate != this->sampleRate)
 	{
-		if(SetCurrentFreq(handle, audioControlInterfaceNum, clockSourceId, (int)sampleRate))
+		if(m_device->SetSampleRate(iSampleRate))
 		{
 			this->sampleRate = sampleRate;
 			asioTime.timeInfo.sampleRate = sampleRate;
 			asioTime.timeInfo.flags |= kSampleRateChanged;
-			milliSeconds = (long)((double)(kBlockFrames * 1000) / this->sampleRate);
+			milliSeconds = (long)((double)(blockFrames * 1000) / this->sampleRate);
 			if (callbacks && callbacks->sampleRateDidChange)
 				callbacks->sampleRateDidChange (this->sampleRate);
 
@@ -673,12 +458,8 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 #endif
 
 	if (info->channel < 0 || (info->isInput ? 
-#ifndef NO_INPUTS
-		info->channel >= kNumInputs 
-#else
-		info->channel >= 0 
-#endif
-			: info->channel >= kNumOutputs))
+		info->channel >= m_NumInputs 
+			: info->channel >= m_NumOutputs))
 		return ASE_InvalidParameter;
 
 	info->type = ASIOSTInt32LSB; //ASIOSTInt32MSB; //ASIOSTInt32LSB24;//ASIOSTInt32MSB24;
@@ -688,7 +469,6 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 	long i;
 	if (info->isInput)
 	{
-#ifndef NO_INPUTS
 		for (i = 0; i < activeInputs; i++)
 		{
 			if (inMap[i] == info->channel)
@@ -697,7 +477,6 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 				break;
 			}
 		}
-#endif
 	}
 	else
 	{
@@ -722,20 +501,18 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 	long i;
 	bool notEnoughMem = false;
 
-#ifndef NO_INPUTS
 	activeInputs = 0;
-#endif
 	activeOutputs = 0;
 	blockFrames = bufferSize;
 	for (i = 0; i < numChannels; i++, info++)
 	{
 		if (info->isInput)
 		{
-#ifndef NO_INPUTS
-			if (info->channelNum < 0 || info->channelNum >= kNumInputs)
+			if (info->channelNum < 0 || info->channelNum >= m_NumInputs)
 				goto error;
 			inMap[activeInputs] = info->channelNum;
 			inputBuffers[activeInputs] = new int[blockFrames * 2];	// double buffer
+			memset(inputBuffers[activeInputs], 0, blockFrames * 2 * sizeof(int));
 			if (inputBuffers[activeInputs])
 			{
 				info->buffers[0] = inputBuffers[activeInputs];
@@ -747,16 +524,16 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 				notEnoughMem = true;
 			}
 			activeInputs++;
-			if (activeInputs > kNumInputs)
+			if (activeInputs > m_NumInputs)
 				goto error;
-#endif
 		}
 		else	// output			
 		{
-			if (info->channelNum < 0 || info->channelNum >= kNumOutputs)
+			if (info->channelNum < 0 || info->channelNum >= m_NumOutputs)
 				goto error;
 			outMap[activeOutputs] = info->channelNum;
 			outputBuffers[activeOutputs] = new int[blockFrames * 2];	// double buffer
+			memset(outputBuffers[activeInputs], 0, blockFrames * 2 * sizeof(int));
 			if (outputBuffers[activeOutputs])
 			{
 				info->buffers[0] = outputBuffers[activeOutputs];
@@ -768,7 +545,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 				notEnoughMem = true;
 			}
 			activeOutputs++;
-			if (activeOutputs > kNumOutputs)
+			if (activeOutputs > m_NumOutputs)
 			{
 				activeOutputs--;
 				disposeBuffers();
@@ -865,35 +642,39 @@ ASIOError AsioUAC2::future (long selector, void* opt)	// !!! check properties
 //---------------------------------------------------------------------------------------------
 bool AsioUAC2::inputOpen ()
 {
+	if(!m_device)
+		return false;
+
+	m_NumInputs = m_device->GetInputChannelNumber();
+	if(inputBuffers)
+		delete inputBuffers;
+	inputBuffers = new int*[m_NumInputs * 2];
+	if(inMap)
+		delete inMap;
+	inMap = new long[m_NumInputs];
+	for (int i = 0; i < m_NumInputs; i++)
+	{
+		inputBuffers[i] = NULL;
+		inMap[i] = 0;
+	}
 	return true;
 }
 
 //---------------------------------------------------------------------------------------------
 void AsioUAC2::inputClose ()
 {
+	if(inMap)
+		delete inMap;
+	if(inputBuffers)
+		delete inputBuffers;
+	m_NumInputs = 0;
+	inMap = NULL;
+	inputBuffers = NULL;
 }
 
 //---------------------------------------------------------------------------------------------
 void AsioUAC2::input()
 {
-#if 0
-	long i;
-	short *in = 0;
-
-	for (i = 0; i < activeInputs; i++)
-	{
-		in = inputBuffers[i];
-		if (in)
-		{
-			if (toggle)
-				in += blockFrames;
-			if ((i & 1) && sawTooth)
-				memcpy(in, sawTooth, (unsigned long)(blockFrames * 2));
-			else if (sineWave)
-				memcpy(in, sineWave, (unsigned long)(blockFrames * 2));
-		}
-	}
-#endif
 }
 
 //------------------------------------------------------------------------------------------------------------------
@@ -903,13 +684,35 @@ void AsioUAC2::input()
 //---------------------------------------------------------------------------------------------
 bool AsioUAC2::outputOpen()
 {
+	if(!m_device)
+		return false;
 
+	m_NumOutputs = m_device->GetOutputChannelNumber();
+	if(outputBuffers)
+		delete outputBuffers;
+	outputBuffers = new int*[m_NumOutputs * 2];
+	if(outMap)
+		delete outMap;
+	outMap = new long[m_NumOutputs];
+	for (int i = 0; i < m_NumOutputs; i++)
+	{
+		outputBuffers[i] = NULL;
+		outMap[i] = 0;
+	}
+	m_device->SetDACCallback(AsioUAC2::sFillOutputData, (void*)this);
 	return true;
 }
 
 //---------------------------------------------------------------------------------------------
 void AsioUAC2::outputClose ()
 {
+	if(outMap)
+		delete outMap;
+	if(outputBuffers)
+		delete outputBuffers;
+	m_NumOutputs = 0;
+	outMap = NULL;
+	outputBuffers = NULL;
 }
 
 //---------------------------------------------------------------------------------------------
@@ -961,123 +764,6 @@ ASIOError AsioUAC2::outputReady ()
 }
 
 
-//----------------USB related functions---------------------------------------
-
-
-ASIOBool AsioUAC2::SendUsbControl(KUSB_HANDLE handle, int interfaceNumber, 
-				   int dir, int type, int recipient, int request, int value, int index,
-				   unsigned char *buff, int size, ULONG *lengthTransferred)
-{
-	BOOL retVal = FALSE;
-	WINUSB_SETUP_PACKET packet;
-	KUSB_SETUP_PACKET* defPkt = (KUSB_SETUP_PACKET*)&packet;
-
-	memset(&packet, 0, sizeof(packet));
-	defPkt->BmRequest.Dir	= dir;
-	defPkt->BmRequest.Type	= type;
-	defPkt->BmRequest.Recipient = recipient;
-	defPkt->Request			= request;
-	defPkt->Value			= value;
-	defPkt->Index			= index;
-	defPkt->Length			= 0;
-
-	*lengthTransferred = 0;
-    if(UsbK_ClaimInterface(handle, interfaceNumber, FALSE))
-	{
-		if(UsbK_ControlTransfer(handle, packet, buff, size, lengthTransferred, NULL))
-			retVal = TRUE;
-
-		UsbK_ReleaseInterface(handle, interfaceNumber, FALSE);
-	}
-	return retVal;
-}
-
-
-int AsioUAC2::GetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId)
-{
-	int freq;
-	ULONG lengthTransferred = 0;
-	if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_DEVICE_TO_HOST, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_INTERFACE, 
-		AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, (clockId << 8) + interfaceNumber,
-				   (unsigned char*)&freq, sizeof(freq), &lengthTransferred) && lengthTransferred == 4)
-	{
-		return freq;
-	}
-	return 0;
-}
-
-ASIOBool AsioUAC2::SetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId, int freq)
-{
-	ULONG lengthTransferred = 0;
-	if(SendUsbControl(handle, interfaceNumber, BMREQUEST_DIR_HOST_TO_DEVICE, BMREQUEST_TYPE_CLASS, BMREQUEST_RECIPIENT_INTERFACE, 
-		AUDIO_CS_REQUEST_CUR, AUDIO_CS_CONTROL_SAM_FREQ << 8, (clockId << 8) + interfaceNumber,
-				   (unsigned char*)&freq, sizeof(freq), &lengthTransferred) && lengthTransferred == 4)
-	{
-		return true;
-	}
-	return false;
-}
-
-ASIOError AsioUAC2::StartDevice()
-{
-	deviceMutex = CreateMutex(NULL, FALSE, "Global\\ASIOUAC2");
-	if(GetLastError() == ERROR_ALREADY_EXISTS)
-	{
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Can't start device! Device already used!");
-#endif
-		if(deviceMutex)
-		{
-			CloseHandle(deviceMutex);
-			deviceMutex = NULL;
-		}
-
-		return ASE_InvalidMode;
-	}
-
-	int packetSize = 4 * (int)sampleRate / 1000 / (1 << (gPipeInfoWrite.Interval - 1)) + 8;
-
-	UsbK_ClaimInterface(handle, audioControlStreamNum, FALSE);
-	UsbK_SetAltInterface(handle, audioControlStreamNum, FALSE, audioControlStreamAltNum);
-
-	memset(outputBuffers[0], 0, blockFrames * 2 * sizeof(int));
-	memset(outputBuffers[1], 0, blockFrames * 2 * sizeof(int));
-
-	feedbackTask = new AudioTask(this, handle, &gPipeInfoFeedback, 16, gPipeInfoFeedback.MaximumPacketSize, gPipeInfoFeedback.MaximumPacketSize, TRUE);
-	outputTask = new AudioTask(this, handle, &gPipeInfoWrite, 32, packetSize, (float)sampleRate / 1000.f, FALSE);
-
-	feedbackTask->Start();
-	outputTask->Start();
-
-	return ASE_OK;
-}
-
-ASIOError AsioUAC2::StopDevice()
-{
-	if(outputTask)
-		outputTask->Stop();
-
-	if(feedbackTask)
-		feedbackTask->Stop();
-
-	if(outputTask)
-		delete outputTask;
-	outputTask = NULL;
-
-	if(feedbackTask)
-		delete feedbackTask;
-	feedbackTask = NULL;
-
-	UsbK_SetAltInterface(handle, audioControlStreamNum, FALSE, 0);
-	UsbK_ReleaseInterface(handle, audioControlStreamNum, FALSE);
-
-	if(deviceMutex)
-	{
-		CloseHandle(deviceMutex);
-		deviceMutex = NULL;
-	}
-	return ASE_OK;
-}
 
 struct AudioSample
 {
@@ -1085,7 +771,7 @@ struct AudioSample
 	int right;
 };
 
-void AsioUAC2::FillData(UCHAR *buffer, int len)
+void AsioUAC2::FillOutputData(UCHAR *buffer, int& len)
 {
 	AudioSample *sampleBuff = (AudioSample *)buffer;
 	int sampleLength = len / sizeof(AudioSample);
@@ -1110,4 +796,21 @@ void AsioUAC2::FillData(UCHAR *buffer, int len)
 			hostBuffer1 = toggle ? outputBuffers[1] + blockFrames : outputBuffers[1];
 		}
 	}
+}
+
+void AsioUAC2::FillInputData(UCHAR *buffer, int& len)
+{
+
+}
+
+void AsioUAC2::sFillOutputData(void* context, UCHAR *buffer, int& len)
+{
+	if(context)
+		((AsioUAC2*)context)->FillOutputData(buffer, len);
+}
+
+void AsioUAC2::sFillInputData(void* context, UCHAR *buffer, int& len)
+{
+	if(context)
+		((AsioUAC2*)context)->FillInputData(buffer, len);
 }

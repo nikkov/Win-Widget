@@ -2,6 +2,11 @@
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual C++ Express 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "asiouac2", "asiouac2.vcproj", "{F47BECCA-9313-4A58-BD05-49A835D017D5}"
+	ProjectSection(ProjectDependencies) = postProject
+		{6964BC9D-1940-424C-9273-921F7C60D72A} = {6964BC9D-1940-424C-9273-921F7C60D72A}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "uaclib", "..\uaclib\uaclib.vcproj", "{6964BC9D-1940-424C-9273-921F7C60D72A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,6 +18,10 @@ Global
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Debug|Win32.Build.0 = Debug|Win32
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Release|Win32.ActiveCfg = Release|Win32
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Release|Win32.Build.0 = Release|Win32
+		{6964BC9D-1940-424C-9273-921F7C60D72A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{6964BC9D-1940-424C-9273-921F7C60D72A}.Debug|Win32.Build.0 = Debug|Win32
+		{6964BC9D-1940-424C-9273-921F7C60D72A}.Release|Win32.ActiveCfg = Release|Win32
+		{6964BC9D-1940-424C-9273-921F7C60D72A}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

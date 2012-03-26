@@ -25,17 +25,8 @@
 #include "asiosys.h"
 
 #define DRIVER_VERSION		0x00000001L
-#define NO_INPUTS
+//#define NO_INPUTS
 //#define EMULATION_HARDWARE
-
-enum
-{
-	kBlockFrames = 512,
-#ifndef NO_INPUTS
-	kNumInputs = 2,
-#endif
-	kNumOutputs = 2
-};
 
 enum
 {
@@ -49,10 +40,6 @@ enum
 
 
 #define DEFAULT_SAMPLE_RATE	44100.
-#define AUDIO_CTRL_IFACE_NUM	1
-#define CLOCK_SOURCE_ID			5
-#define EP_TRANSFER_OUT         0x02
-#define EP_TRANSFER_FEEDBACK    0x81
 
 #if WINDOWS
 
@@ -65,11 +52,8 @@ enum
 
 #include "combase.h"
 #include "iasiodrv.h"
-#include "libusbk.h"
-#include "usb_audio.h"
+#include "USBAudioDevice.h"
 
-
-class AudioTask;
 
 class AsioUAC2 : public IASIO, public CUnknown
 {
@@ -137,7 +121,11 @@ public:
 	void bufferSwitch ();
 	long getMilliSeconds () {return milliSeconds;}
 
-	void FillData(UCHAR *buffer, int len);
+	void FillInputData(UCHAR *buffer, int& len);
+	void FillOutputData(UCHAR *buffer, int& len);
+	
+	static void sFillOutputData(void* context, UCHAR *buffer, int& len);
+	static void sFillInputData(void* context, UCHAR *buffer, int& len);
 
 private:
 friend void myTimer();
@@ -167,20 +155,18 @@ private:
 	ASIOCallbacks *callbacks;
 	ASIOTime asioTime;
 	ASIOTimeStamp theSystemTime;
-#ifndef NO_INPUTS
-	int *inputBuffers[kNumInputs * 2];
-#endif
-	int *outputBuffers[kNumOutputs * 2];
-#ifndef NO_INPUTS
-	long inMap[kNumInputs];
-#endif
-	long outMap[kNumOutputs];
+
+	int m_NumInputs;
+	int m_NumOutputs;
+	int **inputBuffers;
+	int **outputBuffers;
+	long *inMap;
+	long *outMap;
+
 	long blockFrames;
 	long inputLatency;
 	long outputLatency;
-#ifndef NO_INPUTS
 	long activeInputs;
-#endif
 	long activeOutputs;
 	long toggle;
 	long milliSeconds;
@@ -190,35 +176,12 @@ private:
 
 private:
 	int USBAudioClass;
-	KLST_HANDLE deviceList;
-	KUSB_HANDLE handle;
-	KLST_DEVINFO_HANDLE deviceInfo;
-	USB_DEVICE_DESCRIPTOR deviceDescriptor;
-	USB_CONFIGURATION_DESCRIPTOR configurationDescriptor;
-	WINUSB_PIPE_INFORMATION     gPipeInfoFeedback;
-	WINUSB_PIPE_INFORMATION     gPipeInfoWrite;
 
-	int audioControlInterfaceNum;
-	int audioControlStreamNum;
-	int audioControlStreamAltNum;
-	int clockSourceId;
-	//int outEndpointNum;
-	//int feedbackEndpointNum;
-
-	int currentBufferPosition;
-
-	ASIOBool SendUsbControl(KUSB_HANDLE handle, int interfaceNumber, 
-				   int dir, int type, int recipient, int request, int value, int index,
-				   unsigned char *buff, int size, ULONG *lengthTransferred);
-
-	int GetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId);
-	ASIOBool SetCurrentFreq(KUSB_HANDLE handle, int interfaceNumber, int clockId, int freq);
+	USBAudioDevice *m_device;
 
 	ASIOError StartDevice();
 	ASIOError StopDevice();
-
-	AudioTask* outputTask;
-	AudioTask* feedbackTask;
+	int currentBufferPosition;
 
 	HANDLE deviceMutex;
 };
