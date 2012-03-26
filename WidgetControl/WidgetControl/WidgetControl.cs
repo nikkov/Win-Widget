@@ -24,6 +24,8 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
+using System.IO;
+
 using libusbK;
 
 namespace WidgetControl
@@ -51,6 +53,7 @@ namespace WidgetControl
         {
             InitializeComponent();
             InitializeDevice();
+            //SetFeatureFromFile("test.ini");
         }
 
         USB_DEVICE_DESCRIPTOR ByteToDeviceDescriptor (byte[] packet)
@@ -84,7 +87,7 @@ namespace WidgetControl
             return string.Empty;
         }
 
-        private void InitializeDevice()
+        public bool InitializeDevice()
         {
             if (deviceList != null)
                 deviceList.Free();
@@ -131,7 +134,7 @@ namespace WidgetControl
                 if (deviceList != null)
                     deviceList.Free();
                 deviceList = null;
-                return;
+                return false;
             }
             usb = new UsbK(deviceInfo);
             DeviceInfo.Text += String.Format("Opening usb device OK\r\n");
@@ -214,8 +217,13 @@ namespace WidgetControl
                     }
                 }
             }
+            return true;
         }
 
+        public string GetInfo()
+        {
+            return DeviceInfo.Text;
+        }
 
         ComboBox FindFeatureControl(int ind)
         { 
@@ -254,8 +262,95 @@ namespace WidgetControl
             InitializeDevice();
         }
 
+        public bool SetFeatureFromFile(string fileName)
+        {
+            bool needReset = false;
+            bool retValue;
+            try
+            {
+                if (!File.Exists(fileName))
+                {
+                    DeviceInfo.Text = String.Format("{0} does not exist.", fileName);
+                    return false;
+                }
+                using (StreamReader sr = File.OpenText(fileName))
+                {
+                    String input;
+                    int i = 0;
+                    while ((input = sr.ReadLine()) != null)
+                    {
+                        //format line feature=value
+                        input = input.TrimStart().TrimEnd();
+                        if (input.StartsWith(";") || string.IsNullOrEmpty(input))
+                            continue;
+                        string[] str = input.Split(new char[] {'='});
+                        if (str.Length != 2)
+                        {
+                            DeviceInfo.Text = String.Format("Error in line {0}, string {1}", i, input);
+                            return false;
+                        }
+                        string feature = str[0];
+                        string value = str[1];
+                        if (feature.ToUpper() == "NEEDRESET" && value == "1")
+                        {
+                            needReset = true;
+                            continue;
+                        }
+
+                        int featureIndex = GetFeatureIndex(feature);
+                        if (featureIndex == -1)
+                        {
+                            DeviceInfo.Text = String.Format("Feature {0} not found in possible features", feature);
+                            return false;
+                        }
+                        ComboBox cbox = FindFeatureControl(featureIndex);
+                        if (cbox == null)
+                        {
+                            DeviceInfo.Text = String.Format("Feature {0} not found in device", feature);
+                            return false;
+                        }
+                        bool isFound = false;
+                        for (int ci = 0; ci < cbox.Items.Count; ci++)
+                        {
+                            if (cbox.Items[ci].ToString().ToUpper() == value.ToUpper())
+                            {
+                                cbox.SelectedIndex = ci;
+                                isFound = true;
+                                break;
+                            }
+                        }
+                        if (!isFound)
+                        {
+                            DeviceInfo.Text = String.Format("Feature value {0} for feature {1} not found in device", value, feature);
+                            return false;
+                        }
+                            //Console.WriteLine("The end of the stream has been reached.");
+                        i++;
+                    }
+                }
+                retValue = true;
+            }
+            catch(Exception e)
+            {
+                DeviceInfo.Text = e.Message;
+                return false;
+            }
+
+            retValue &= Save();
+            if (needReset)
+                ResetDevice();
+
+            return retValue;
+        }
+
         private void OnSave(object sender, EventArgs e)
         {
+            Save();
+        }
+
+        private bool Save()
+        {
+            bool success = true;
             foreach (Control ctrl in this.Controls)
             {
                 if (ctrl is ComboBox)
@@ -267,12 +362,13 @@ namespace WidgetControl
                     {
                         int feature_value_index = (int)feature_value_lookup_dict[index];
 
-                        bool success = SendUsbControl(interfaceNumber, (byte)BMREQUEST_DIR.DEVICE_TO_HOST, (byte)BMREQUEST_TYPE.VENDOR,
+                        success &= SendUsbControl(interfaceNumber, (byte)BMREQUEST_DIR.DEVICE_TO_HOST, (byte)BMREQUEST_TYPE.VENDOR,
                             (byte)BMREQUEST_RECIPIENT.DEVICE, 0x71, 3, (ushort)(2 + feature + feature_value_index * 256),
                                globalBuffer, globalBufferLength, out LengthTransferred);
                     }
                 }
             }
+            return success;
         }
 
         private void OnRefresh(object sender, EventArgs e)
@@ -282,11 +378,16 @@ namespace WidgetControl
 
         private void OnReset(object sender, EventArgs e)
         {
-            bool success = SendUsbControl(interfaceNumber, (byte)BMREQUEST_DIR.DEVICE_TO_HOST, (byte)BMREQUEST_TYPE.VENDOR,
+            ResetDevice();
+            System.Threading.Thread.Sleep(5000);
+            InitializeDevice();
+        }
+
+        private bool ResetDevice()
+        {
+            return SendUsbControl(interfaceNumber, (byte)BMREQUEST_DIR.DEVICE_TO_HOST, (byte)BMREQUEST_TYPE.VENDOR,
                 (byte)BMREQUEST_RECIPIENT.DEVICE, 0x0F, 0, 0,
                    globalBuffer, globalBufferLength, out LengthTransferred);
-            System.Threading.Thread.Sleep(5);
-            InitializeDevice();
         }
 
         private void OnFactReset(object sender, EventArgs e)
@@ -296,6 +397,40 @@ namespace WidgetControl
                    globalBuffer, globalBufferLength, out LengthTransferred);
             System.Threading.Thread.Sleep(5);
             InitializeDevice();
+        }
+
+        struct FeatureDescriptor
+        {
+            public int index;
+            public string name;
+            public FeatureDescriptor(int _index, string _name)
+            {
+                index = _index;
+                name = _name;
+            }
+        };
+
+        static FeatureDescriptor[] features = new FeatureDescriptor[]
+        {
+            new  FeatureDescriptor(0, "BoardType"),
+            new  FeatureDescriptor(1, "ImageType"),
+            new  FeatureDescriptor(2, "InType"),
+            new  FeatureDescriptor(3, "OutType"),
+            new  FeatureDescriptor(4, "AdcType"),
+            new  FeatureDescriptor(5, "DacType"),
+            new  FeatureDescriptor(6, "LcdType"),
+            new  FeatureDescriptor(7, "LogType"),
+            new  FeatureDescriptor(8, "FilterType"),
+        };
+
+        static int GetFeatureIndex(string name)
+        {
+            foreach (FeatureDescriptor feature in features)
+            {
+                if (name.ToUpper() == feature.name.ToUpper())
+                    return feature.index;
+            }
+            return -1;
         }
     }
 }
