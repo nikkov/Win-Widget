@@ -73,6 +73,8 @@ public:
 	virtual ~USBDevice();
 	virtual bool InitDevice();
 
+	virtual bool IsValidDevice() { return m_usbDeviceHandle != NULL; }
+
 	DWORD GetErrorCode() 
 	{
 		return m_errorCode;
@@ -230,7 +232,7 @@ public:
 #endif
 		return FALSE;
 	}
-	
+
 	bool UsbReleaseInterface(UCHAR Number)
 	{
 		if(UsbK_ReleaseInterface (m_usbDeviceHandle, Number, FALSE))

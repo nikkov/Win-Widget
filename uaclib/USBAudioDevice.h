@@ -50,6 +50,8 @@
 #include "descriptors.h"
 
 
+typedef void (*NotifyCallback)(void* context, int reason);
+
 typedef TList<USBAudioControlInterface> USBACInterfaceList;
 typedef TList<USBAudioStreamingInterface> USBASInterfaceList;
 
@@ -67,7 +69,12 @@ class USBAudioDevice : public USBDevice
 	int								m_audioClass;
 	bool							m_useInput;
 
-	USBAudioStreamingInterface*		m_currentAsInterface;
+	USBAudioStreamingEndpoint*		m_dacEndpoint;
+	USBAudioStreamingEndpoint*		m_adcEndpoint;
+	USBAudioStreamingEndpoint*		m_fbEndpoint;
+
+	NotifyCallback					m_notifyCallback;
+	void*							m_notifyCallbackContext;
 protected:
 	virtual void FreeDevice();
 
@@ -78,6 +85,10 @@ protected:
 	USBAudioClockSource* FindClockSource(int freq);
 	bool CheckSampleRate(USBAudioClockSource* clocksrc, int freq);
 	int GetSampleRateInternal(int interfaceNum, int clockID);
+
+	USBAudioInTerminal*			FindInTerminal(int id);
+	USBAudioFeatureUnit*		FindFeatureUnit(int id);
+	USBAudioOutTerminal*		FindOutTerminal(int id);
 
 public:
 	USBAudioDevice(bool useInput);
@@ -96,6 +107,37 @@ public:
 
 	void SetDACCallback(FillDataCallback readDataCb, void* context);
 	void SetADCCallback(FillDataCallback writeDataCb, void* context);
+	void SetNotifyCallback(NotifyCallback notifyCallback, void* notifyCallbackContext)
+	{
+		m_notifyCallback = notifyCallback;
+		m_notifyCallbackContext = notifyCallbackContext;
+	}
+
+	int GetDACSubslotSize()
+	{
+		return m_dacEndpoint ? m_dacEndpoint->m_interface->m_formatDescriptor.bSubslotSize : 0;
+	}
+	int GetADCSubslotSize()
+	{
+		return m_adcEndpoint ? m_adcEndpoint->m_interface->m_formatDescriptor.bSubslotSize : 0;
+	}
+	int GetDACBitResolution()
+	{
+		return m_dacEndpoint ? m_dacEndpoint->m_interface->m_formatDescriptor.bBitResolution : 0;
+	}
+	int GetADCBitResolution()
+	{
+		return m_adcEndpoint ? m_adcEndpoint->m_interface->m_formatDescriptor.bBitResolution : 0;
+	}
+	int GetAudioClass()
+	{
+		return m_audioClass;
+	}
+	void Notify(int reason)
+	{
+		if(m_notifyCallback)
+			m_notifyCallback(m_notifyCallbackContext, reason);
+	}
 private:
 	USBAudioInterface*	m_lastParsedInterface;
 	USBEndpoint*		m_lastParsedEndpoint;

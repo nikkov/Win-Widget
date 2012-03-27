@@ -24,9 +24,7 @@
 
 #include "asiosys.h"
 
-#define DRIVER_VERSION		0x00000001L
-//#define NO_INPUTS
-//#define EMULATION_HARDWARE
+#define DRIVER_VERSION		0x00000002L
 
 enum
 {
@@ -35,11 +33,7 @@ enum
 	USBAudioClass2
 };
 
-//#define WIDGET_VID			0x16C0
-//#define WIDGET_PID			0x03E8
 
-
-#define DEFAULT_SAMPLE_RATE	44100.
 
 #if WINDOWS
 
@@ -118,14 +112,20 @@ public:
 	ASIOError future (long selector, void *opt);
 	ASIOError outputReady ();
 
+	void DeviceNotify(int reason);
+
 	void bufferSwitch ();
 	long getMilliSeconds () {return milliSeconds;}
 
-	void FillInputData(UCHAR *buffer, int& len);
-	void FillOutputData(UCHAR *buffer, int& len);
+	template <typename T_SRC, typename T_DST> void FillInputData(UCHAR *buffer, int& len);
+	template <typename T_SRC, typename T_DST> void FillOutputData(UCHAR *buffer, int& len);
 	
-	static void sFillOutputData(void* context, UCHAR *buffer, int& len);
-	static void sFillInputData(void* context, UCHAR *buffer, int& len);
+	static void sFillOutputData3(void* context, UCHAR *buffer, int& len);
+	static void sFillInputData3(void* context, UCHAR *buffer, int& len);
+	static void sFillOutputData4(void* context, UCHAR *buffer, int& len);
+	static void sFillInputData4(void* context, UCHAR *buffer, int& len);
+
+	static void sDeviceNotify(void* context, int reason);
 
 private:
 friend void myTimer();
@@ -158,8 +158,10 @@ private:
 
 	int m_NumInputs;
 	int m_NumOutputs;
-	int **inputBuffers;
-	int **outputBuffers;
+	int m_inputSampleSize;
+	int m_outputSampleSize;
+	char **inputBuffers;
+	char **outputBuffers;
 	long *inMap;
 	long *outMap;
 
@@ -181,8 +183,8 @@ private:
 
 	ASIOError StartDevice();
 	ASIOError StopDevice();
-	int currentBufferPosition;
-
+	int currentOutBufferPosition;
+	int currentInBufferPosition;
 	HANDLE deviceMutex;
 };
 

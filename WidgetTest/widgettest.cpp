@@ -23,33 +23,81 @@
 #include "tlist.h"
 
 
-struct AudioSample
+struct AudioSample4
 {
 	int left;
 	int right;
 };
 
-AudioSample dummybuffer[48];
+struct ThreeByteSample
+{
+	UCHAR sample[3];
+	ThreeByteSample(int val = 0)
+	{
+		memcpy(sample, &val, 3);
+
+/*
+		sample[0] = (val >> 0) & 0xff;
+		sample[1] = (val >> 8) & 0xff;
+		sample[2] = (val >> 16) & 0xff;
+*/
+	}
+
+	operator int()const
+	{
+		return (sample[0] << 0) + (sample[1] << 16) + (sample[2] << 8);
+	}
+};
+
+struct AudioSample3
+{
+	ThreeByteSample left;
+	ThreeByteSample right;
+};
+
+AudioSample4 dummybuffer[48];
 DWORD globalReadBuffer = 0;
 DWORD globalPacketCounter = 0;
 
-void FillBuffer()
+void FillBuffer(bool zoom)
 {
-	memset(dummybuffer, 0, 48*sizeof(AudioSample));
+	memset(dummybuffer, 0, 48*sizeof(AudioSample4));
 	for(int i = 0; i < 48; i++)
 	{
+		//dummybuffer[i].left = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
 		dummybuffer[i].left = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
 		dummybuffer[i].right = dummybuffer[i].left;
 
-		dummybuffer[i].left = dummybuffer[i].left << 8;
-		dummybuffer[i].right = dummybuffer[i].right << 8;
+		if(zoom)
+		{
+			dummybuffer[i].left = dummybuffer[i].left << 8;
+			dummybuffer[i].right = dummybuffer[i].right << 8;
+		}
 	}
 }
 
-void FillData(void* context, UCHAR *buffer, int& len)
+void FillData4(void* context, UCHAR *buffer, int& len)
 {
-	AudioSample *sampleBuff = (AudioSample *)buffer;
-	int sampleLength = len / sizeof(AudioSample);
+	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
+	int sampleLength = len / sizeof(AudioSample4);
+
+	for(int i = 0; i < sampleLength; i++)
+	{
+		sampleBuff[i].left =  dummybuffer[globalReadBuffer].left;
+		sampleBuff[i].right = dummybuffer[globalReadBuffer].right;
+		globalReadBuffer++;
+		if(globalReadBuffer >= 48) 
+			globalReadBuffer = 0;
+	}
+	globalPacketCounter++;
+	if(globalPacketCounter > 0xFF)
+		globalPacketCounter = 0;
+}
+
+void FillData3(void* context, UCHAR *buffer, int& len)
+{
+	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
+	int sampleLength = len / sizeof(AudioSample3);
 
 	for(int i = 0; i < sampleLength; i++)
 	{
@@ -73,8 +121,18 @@ int main(int argc, char* argv[])
 	{
 		USBAudioDevice device(false);
 		device.InitDevice();
-		FillBuffer();
-		device.SetDACCallback(FillData, NULL);
+		
+		if(device.GetDACSubslotSize() == 3)
+		{
+			FillBuffer(false);
+			device.SetDACCallback(FillData3, NULL);
+		}
+		else
+			if(device.GetDACSubslotSize() == 4)
+			{
+				FillBuffer(true);
+				device.SetDACCallback(FillData4, NULL);
+			}
 		device.SetSampleRate(freq);
 		device.Start();
 

@@ -195,7 +195,7 @@ public:
 
 		retVal = (ResumeThread(m_Thread) != -1);
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: %s.Start is OK\n", m_Task.TaskName());
+		debugPrintf("ASIOUAC: %s. Start is OK\n", m_Task.TaskName());
 #endif
 		return retVal;
 	}
@@ -273,7 +273,7 @@ class AudioTask : public TaskThread
 	void SetNextFrameNumber(ISOBuffer* buffer)
 	{
 		buffer->IsoContext->StartFrame = m_FrameNumber;
-		m_FrameNumber += 8;
+		m_FrameNumber += m_channelNumber * m_sampleSize;
 	}
 
 	void IsoXferComplete(ISOBuffer* buffer, ULONG transferLength)
@@ -291,6 +291,10 @@ protected:
 	UCHAR				m_pipeId;
 	USHORT				m_maximumPacketSize;
 	UCHAR				m_interval;
+
+	//sample format
+	UCHAR				m_sampleSize;
+	UCHAR				m_channelNumber;
 
 	int					m_packetPerTransfer;
 	int					m_packetSize;
@@ -325,7 +329,9 @@ public:
 		m_outstandingIndex(0),
 		m_completedIndex(0),
 		m_isStarted(FALSE),
-		m_sampleFreq(0)
+		m_sampleFreq(0),
+		m_sampleSize(4), //default sample size in bytes
+		m_channelNumber(2)
 	{
 		memset(m_isoBuffers, 0, sizeof(m_isoBuffers));
 		_tcscpy_s(m_taskName, taskName);
@@ -344,13 +350,15 @@ public:
 		return m_taskName;
 	}
 
-	void Init(USBAudioDevice *device, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval)
+	void Init(USBAudioDevice *device, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval, UCHAR channelNumber, UCHAR sampleSize)
 	{
 		FreeBuffers();
 		m_device = device;
 		m_pipeId = pipeId;
 		m_maximumPacketSize = maximumPacketSize;
 		m_interval = interval;
+		m_channelNumber = channelNumber;
+		m_sampleSize = sampleSize;
 	}
 
 	void SetSampleFreq(int freq)
@@ -374,8 +382,8 @@ protected:
 	{
 		if(m_isStarted)
 			return FALSE;
-		m_packetSize = 4 * freq / 1000 / (1 << (m_interval - 1)) + 8;
-		m_defaultPacketSize = (float)freq / 1000.f;
+		m_packetSize = m_sampleSize * freq / 1000 / (1 << (m_interval - 1)) + m_channelNumber * m_sampleSize; //size in bytes
+		m_defaultPacketSize = (float)freq / 1000.f;	// size in stereo samples
 		if(BufferIsAllocated())
 			FreeBuffers();
 		AllocBuffers();
@@ -388,7 +396,7 @@ protected:
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
-	AudioDACTask() : AudioTask(32, "Audio DAC task"), m_feedbackInfo(NULL), m_readDataCb(NULL), m_readDataCbContext(NULL)
+	AudioDACTask() : AudioTask(16, "Audio DAC task"), m_feedbackInfo(NULL), m_readDataCb(NULL), m_readDataCbContext(NULL)
 	{}
 
 	~AudioDACTask()
@@ -416,8 +424,8 @@ protected:
 	{
 		if(m_isStarted)
 			return FALSE;
-		m_packetSize = 4 * freq / 1000 / (1 << (m_interval - 1)) + 8;
-		m_defaultPacketSize = (float)freq / 1000.f;
+		m_packetSize = m_sampleSize * freq / 1000 / (1 << (m_interval - 1)) + m_channelNumber * m_sampleSize; //size in bytes
+		m_defaultPacketSize = (float)freq / 1000.f;	// size in stereo samples
 		if(BufferIsAllocated())
 			FreeBuffers();
 		AllocBuffers();
@@ -496,9 +504,9 @@ public:
 	AudioDAC()
 	{
 	}
-	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval)
+	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval, UCHAR channelNumber, UCHAR sampleSize)
 	{
-		m_Task.Init(device, pipeId, maximumPacketSize, interval);
+		m_Task.Init(device, pipeId, maximumPacketSize, interval, channelNumber, sampleSize);
 		m_Task.SetFeedbackInfo(fb);
 	}
 	void SetSampleFreq(int freq)
@@ -517,9 +525,9 @@ public:
 	AudioADC()
 	{
 	}
-	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval)
+	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval, UCHAR channelNumber, UCHAR sampleSize)
 	{
-		m_Task.Init(device, pipeId, maximumPacketSize, interval);
+		m_Task.Init(device, pipeId, maximumPacketSize, interval, channelNumber, sampleSize);
 		m_Task.SetFeedbackInfo(fb);
 	}
 	void SetSampleFreq(int freq)
@@ -538,9 +546,9 @@ public:
 	AudioFeedback()
 	{
 	}
-	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval)
+	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval, UCHAR valueSize)
 	{
-		m_Task.Init(device, pipeId, maximumPacketSize, interval);
+		m_Task.Init(device, pipeId, maximumPacketSize, interval, 1, valueSize);
 		m_Task.SetFeedbackInfo(fb);
 	}
 	void InitFeedback()

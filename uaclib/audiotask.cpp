@@ -80,9 +80,9 @@ bool AudioTask::AfterStop()
 		return TRUE;
 	m_device->UsbAbortPipe((UCHAR)m_pipeId);
 
-	//указатель на последний буфер отправленный в очередь
+	//index of last buffer in queue
 	m_outstandingIndex;
-	//указатель на последний принятый буфер
+	//index of last received buffer
 	m_completedIndex;
 
     //  Cancel all transfers left outstanding.
@@ -176,7 +176,7 @@ bool AudioTask::Work(volatile TaskState& taskState)
 
 		RWBuffer(nextXfer, dataLength);
 	}
-	//кого ждем следующего
+	//find next waiting buffer in queue
 	nextXfer = m_isoBuffers + m_completedIndex;
 	if (!nextXfer || taskState != TaskStarted) 
 	{
@@ -190,7 +190,9 @@ bool AudioTask::Work(volatile TaskState& taskState)
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: %s OvlK_Wait failed. ErrorCode: %08Xh\n", TaskName(),  GetLastError());
 #endif
-		m_device->ClearErrorCode();
+		//m_device->ClearErrorCode();
+		m_device->Notify(0);
+		return FALSE;
 	}
 	else
 		ProcessBuffer(nextXfer);
@@ -215,36 +217,48 @@ bool AudioDACTask::AfterStopInternal()
 
 int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 {
-	float cur_feedback = m_feedbackInfo == NULL || m_feedbackInfo->GetValue() == 0.0f 
-						?  2.0f * m_defaultPacketSize 
-						:  2.0f * m_feedbackInfo->GetValue(); //value in samples
-	if(cur_feedback > (float)m_packetSize)
+	float raw_cur_feedback = m_feedbackInfo == NULL || m_feedbackInfo->GetValue() == 0.0f 
+						?  m_defaultPacketSize
+						:  m_feedbackInfo->GetValue(); //value in stereo samples in one second
+	int maxSamplesInPacket = m_packetSize / m_channelNumber / m_sampleSize * 8 / (1 << (m_interval - 1)); //max stereo samples in one packet
+	if(raw_cur_feedback > (float)(maxSamplesInPacket))
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: %s. Feedback value (%f) larger than the maximum packet size\n", TaskName(), cur_feedback);
+		debugPrintf("ASIOUAC: %s. Feedback value (%f) larger than the maximum packet size\n", TaskName(), raw_cur_feedback);
 #endif
-		cur_feedback = (float)m_packetSize;
+		raw_cur_feedback = (float)maxSamplesInPacket;
 	}
-	float nextOffSet = 0;
 	int dataLength = 0;
-	if(cur_feedback > 0)
+	if(raw_cur_feedback > 0)
 	{
-
-		int packetIndex;
-		for (packetIndex = 0; packetIndex < nextXfer->IsoContext->NumberOfPackets; packetIndex++)
+		//in one second we have 8 / (1 << (m_interval - 1)) packets
+		//one packet must contain samples number = [cur_feedback * (1 << (m_interval - 1)) / 8]
+		float cur_feedback = (raw_cur_feedback * (1 << (m_interval - 1))) / 8; //number stereo samples in one packet
+		int icur_feedback = (int)cur_feedback;
+		int nextOffSet = 0;
+		float frac = cur_feedback - icur_feedback;
+		if(raw_cur_feedback == (float)maxSamplesInPacket)
+			frac = 0.f;
+		icur_feedback *= m_channelNumber * m_sampleSize;
+		float addSample = 0;
+		for (int packetIndex = 0; packetIndex < nextXfer->IsoContext->NumberOfPackets; packetIndex++)
 		{
-			nextXfer->IsoContext->IsoPackets[packetIndex].Offset = (int)nextOffSet;
-			nextOffSet += cur_feedback;
-			// trunk offset to integer number of stereo sample
-			nextOffSet += 4.f;
-			nextOffSet = (float)((int)nextOffSet - ((int)nextOffSet % 8));
+			nextXfer->IsoContext->IsoPackets[packetIndex].Offset = nextOffSet;
+
+			nextOffSet += icur_feedback;
+			addSample += frac;
+			if(addSample > 1.f)
+			{
+				nextOffSet += m_channelNumber * m_sampleSize; //append additional stereo sample
+				addSample -= 1.f;
+			}
 		}
 		dataLength = (int)nextOffSet;
 
 		if(m_readDataCb)
 			m_readDataCb(m_readDataCbContext, nextXfer->DataBuffer, dataLength);
 #ifdef _DEBUG
-		//debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), cur_feedback / 2.0f, (float)dataLength/8.f, dataLength);
+		//debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), raw_cur_feedback, (float)dataLength/8.f, dataLength);
 #endif
 	}
 	else
@@ -349,6 +363,7 @@ void AudioFeedbackTask::ProcessBuffer(ISOBuffer* nextXfer)
 	if(m_feedbackInfo == NULL)
 		return;
 	KISO_PACKET isoPacket = nextXfer->IsoPackets[nextXfer->IsoContext->NumberOfPackets - 1];
+	//TODO: isoPacket.Length may be 3 or 4
 	if (isoPacket.Length > 1)
 	{
 		int feedback = *((int*)(nextXfer->DataBuffer + isoPacket.Offset));

@@ -58,7 +58,8 @@ void debugPrintf(const char *szFormat, ...)
 #endif
 
 USBAudioDevice::USBAudioDevice(bool useInput) : m_fbInfo(), m_dac(NULL), m_adc(NULL), m_feedback(NULL), m_useInput(useInput),
-	m_lastParsedInterface(NULL), m_lastParsedEndpoint(NULL), m_audioClass(2), m_currentAsInterface(NULL)
+	m_lastParsedInterface(NULL), m_lastParsedEndpoint(NULL), m_audioClass(0),
+	m_dacEndpoint(NULL), m_adcEndpoint(NULL), m_fbEndpoint(NULL), m_notifyCallback(NULL), m_notifyCallbackContext(NULL)
 {
 	InitDescriptors();
 }
@@ -98,7 +99,6 @@ void USBAudioDevice::FreeDeviceInternal()
 	m_feedback = NULL;
 	m_adc = NULL;
 	m_dac = NULL;
-	m_currentAsInterface = NULL;
 }
 
 bool USBAudioDevice::ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor)
@@ -122,7 +122,7 @@ bool USBAudioDevice::ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor)
 				case AUDIO_INTERFACE_SUBCLASS_AUDIOCONTROL:
 					{	
 #ifdef _DEBUG
-						debugPrintf("ASIOUAC: Found audio control interface %d\n", interfaceDescriptor->bInterfaceNumber);
+						debugPrintf("ASIOUAC: Found audio control interface 0x%X\n", interfaceDescriptor->bInterfaceNumber);
 #endif
 						USBAudioControlInterface *iACface = new USBAudioControlInterface(interfaceDescriptor);
 						m_lastParsedInterface = iACface;
@@ -133,7 +133,7 @@ bool USBAudioDevice::ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor)
 				case AUDIO_INTERFACE_SUBCLASS_AUDIOSTREAMING:
 					{
 #ifdef _DEBUG
-						debugPrintf("ASIOUAC: Found audio streaming interface %d (alt num %d) with %d endpoints\n", interfaceDescriptor->bInterfaceNumber, 
+						debugPrintf("ASIOUAC: Found audio streaming interface 0x%X (alt num 0x%X) with %d endpoints\n", interfaceDescriptor->bInterfaceNumber, 
 							interfaceDescriptor->bAlternateSetting, interfaceDescriptor->bNumEndpoints);
 #endif
 						USBAudioStreamingInterface *iASface = new USBAudioStreamingInterface(interfaceDescriptor);
@@ -150,7 +150,12 @@ bool USBAudioDevice::ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor)
 		
 		case CS_INTERFACE:
 			if(m_lastParsedInterface)
-				return m_lastParsedInterface->SetCSDescriptor(uDescriptor);
+			{
+				bool retVal = m_lastParsedInterface->SetCSDescriptor(uDescriptor);
+				if(m_audioClass == 0 && m_lastParsedInterface->Descriptor().bInterfaceSubClass == AUDIO_INTERFACE_SUBCLASS_AUDIOCONTROL)
+					m_audioClass = ((USBAudioControlInterface*)m_lastParsedInterface)->m_acDescriptor.bcdADC == 0x200 ? 2 : 1;
+				return retVal;
+			}
 		return FALSE;
 
 		case USB_DESCRIPTOR_TYPE_ENDPOINT:
@@ -187,11 +192,28 @@ bool USBAudioDevice::InitDevice()
 					(epoint->m_descriptor.bmAttributes & 0x0C) != 0) //not feedback
 				{
 #ifdef _DEBUG
-				    debugPrintf("ASIOUAC: Found input endpoint %X\n",  (int)epoint->m_descriptor.bEndpointAddress);
+				    debugPrintf("ASIOUAC: Found input endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
 #endif
+					int channelNumber = 2;
+					USBAudioOutTerminal* outTerm = FindOutTerminal(iface->m_asgDescriptor.bTerminalLink);
+					if(outTerm)
+					{
+						USBAudioFeatureUnit* unit = FindFeatureUnit(outTerm->m_outTerminal.bSourceID);
+						if(unit)
+						{
+							USBAudioInTerminal* inTerm = FindInTerminal(unit->m_featureUnit.bSourceID);
+							if(inTerm)
+								channelNumber = inTerm->m_inTerminal.bNrChannels;
+						}
+					}
+
 					m_adc = new AudioADC();
-					m_adc->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, epoint->m_descriptor.bInterval);
-					m_currentAsInterface = iface;
+					m_adc->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, 
+						epoint->m_descriptor.wMaxPacketSize, 
+						epoint->m_descriptor.bInterval, 
+						channelNumber, 
+						iface->m_formatDescriptor.bSubslotSize);
+					m_adcEndpoint = epoint;
 					break;
 				}
 				epoint = iface->m_endpointsList.Next(epoint);
@@ -217,12 +239,12 @@ bool USBAudioDevice::InitDevice()
 					(epoint->m_descriptor.bmAttributes & 0x0C) == 0) //feedback
 				{
 #ifdef _DEBUG
-					debugPrintf("ASIOUAC: Found feedback endpoint %X\n",  (int)epoint->m_descriptor.bEndpointAddress);
+					debugPrintf("ASIOUAC: Found feedback endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
 #endif
 					m_feedback = new AudioFeedback();
-					m_feedback->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, epoint->m_descriptor.bInterval);
+					m_feedback->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, epoint->m_descriptor.bInterval, 4);
 					m_feedback->InitFeedback();
-					m_currentAsInterface = iface;
+					m_fbEndpoint = epoint;
 					break;
 				}
 				epoint = iface->m_endpointsList.Next(epoint);
@@ -236,9 +258,8 @@ bool USBAudioDevice::InitDevice()
 	USBAudioStreamingInterface * iface = m_asInterfaceList.First();
 	while(iface)
 	{
-		if(m_currentAsInterface && m_currentAsInterface == iface)
+		if(m_fbEndpoint && m_fbEndpoint->m_interface == iface) //out endpoint and feedback endpoint in same interface
 		{
-			//iface == m_currentAsInterface
 			USBAudioStreamingEndpoint * epoint = iface->m_endpointsList.First();
 			while(epoint)
 			{
@@ -246,12 +267,19 @@ bool USBAudioDevice::InitDevice()
 					(epoint->m_descriptor.bmAttributes & 0x03) == USB_ENDPOINT_TYPE_ISOCHRONOUS)
 				{
 #ifdef _DEBUG
-					debugPrintf("ASIOUAC: Found output endpoint %X\n",  (int)epoint->m_descriptor.bEndpointAddress);
+					debugPrintf("ASIOUAC: Found output endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
 #endif
+					int channelNumber = 2;
+					USBAudioInTerminal* inTerm = FindInTerminal(iface->m_asgDescriptor.bTerminalLink);
+					if(inTerm)
+						channelNumber = inTerm->m_inTerminal.bNrChannels;
+
 					m_dac = new AudioDAC();
-					m_dac->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, epoint->m_descriptor.bInterval);
-					if(m_currentAsInterface)
-						m_currentAsInterface = iface;
+					m_dac->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, 
+						epoint->m_descriptor.bInterval, 
+						channelNumber, 
+						iface->m_formatDescriptor.bSubslotSize);
+					m_dacEndpoint = epoint;
 					break;
 				}
 				epoint = iface->m_endpointsList.Next(epoint);
@@ -298,14 +326,20 @@ bool USBAudioDevice::CheckSampleRate(USBAudioClockSource* clocksrc, int newfreq)
 #endif
 		for(int i = 0; i < length; i++)
 		{
-			for(int freq = triplets[i].min_freq; freq <= triplets[i].max_freq; freq += triplets[i].res_freq)
+			if(triplets[i].res_freq == 0)
 			{
-#ifdef _DEBUG
-				//debugPrintf("ASIOUAC: Supported freq: %d\n", freq);
-#endif
-				if(newfreq == freq)
+				if(newfreq == triplets[i].min_freq)
 					retVal = TRUE;
 			}
+			else
+				for(int freq = triplets[i].min_freq; freq <= triplets[i].max_freq; freq += triplets[i].res_freq)
+				{
+#ifdef _DEBUG
+					//debugPrintf("ASIOUAC: Supported freq: %d\n", freq);
+#endif
+					if(newfreq == freq)
+						retVal = TRUE;
+				}
 		}
 		UsbReleaseInterface(clocksrc->m_interface->Descriptor().bInterfaceNumber);
 #ifdef _DEBUG
@@ -387,6 +421,9 @@ bool USBAudioDevice::SetSampleRateInternal(int freq)
 
 int USBAudioDevice::GetCurrentSampleRate()
 {
+	if(!IsValidDevice())
+		return 0;
+
 	if(m_acInterfaceList.Count() == 1 && m_acInterfaceList.First()->m_clockSourceList.Count() == 1)
 	{
 		int acInterfaceNum = m_acInterfaceList.First()->Descriptor().bInterfaceNumber;
@@ -395,7 +432,7 @@ int USBAudioDevice::GetCurrentSampleRate()
 	}
 	else
 	{
-		//здесь надо подумать
+		//more AC interfaces???
 	}
 
 	return 0;
@@ -440,6 +477,9 @@ int USBAudioDevice::GetSampleRateInternal(int interfaceNum, int clockID)
 
 bool USBAudioDevice::SetSampleRate(int freq)
 {
+	if(!IsValidDevice())
+		return FALSE;
+
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: Set samplerate %d\n",  freq);
 #endif
@@ -456,35 +496,58 @@ bool USBAudioDevice::SetSampleRate(int freq)
 
 bool USBAudioDevice::CanSampleRate(int freq)
 {
+	if(!IsValidDevice())
+		return FALSE;
 	return 	FindClockSource(freq) != NULL;
 }
 
 
 bool USBAudioDevice::Start()
 {
+	if(!IsValidDevice())
+		return FALSE;
+
 	bool retVal = TRUE;
 
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: USBAudioDevice start\n");
 #endif
 
-	UsbClaimInterface(m_currentAsInterface->Descriptor().bInterfaceNumber);
-	UsbSetAltInterface(m_currentAsInterface->Descriptor().bInterfaceNumber, m_currentAsInterface->Descriptor().bAlternateSetting);
+	if(m_dacEndpoint)
+	{
+		UsbClaimInterface(m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber);
+		UsbSetAltInterface(m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, m_dacEndpoint->m_interface->Descriptor().bAlternateSetting);
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Claim DAC interface 0x%X (alt 0x%X)\n", m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, 
+			m_dacEndpoint->m_interface->Descriptor().bAlternateSetting);
+#endif
+	}
+	if(m_adcEndpoint)
+	{
+		UsbClaimInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber);
+		UsbSetAltInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Claim ADC interface 0x%X (alt 0x%X)\n", m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, 
+			m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
+#endif
+	}
+
+	if(m_dac != NULL)
+		retVal &= m_dac->Start();
 
 	if(m_adc != NULL)
 		retVal &= m_adc->Start();
 	if(m_feedback != NULL)
 		retVal &= m_feedback->Start();
 
-	Sleep(100);
-	if(m_dac != NULL)
-		retVal &= m_dac->Start();
-
 	return retVal;
 }
 
 bool USBAudioDevice::Stop()
 {
+	if(!IsValidDevice())
+		return FALSE;
+
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: USBAudioDevice stop\n");
 #endif
@@ -497,19 +560,43 @@ bool USBAudioDevice::Stop()
 	if(m_feedback != NULL)
 		retVal &= m_feedback->Stop();
 
-
-	USBAudioStreamingInterface * iface = m_asInterfaceList.First();
-	while(iface)
+	if(m_adcEndpoint)
 	{
-		if(iface->Descriptor().bInterfaceNumber == iface->Descriptor().bInterfaceNumber &&
-			iface->m_endpointsList.Count() == 0)
+		USBAudioStreamingInterface * iface = m_asInterfaceList.First();
+		while(iface)
 		{
-		
-			UsbSetAltInterface(iface->Descriptor().bInterfaceNumber, iface->Descriptor().bAlternateSetting);
-			UsbReleaseInterface(m_currentAsInterface->Descriptor().bInterfaceNumber);
-			break;
+			if(iface->Descriptor().bInterfaceNumber == m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber &&
+				iface->m_endpointsList.Count() == 0)
+			{
+			
+				UsbSetAltInterface(iface->Descriptor().bInterfaceNumber, iface->Descriptor().bAlternateSetting);
+				UsbReleaseInterface(iface->Descriptor().bInterfaceNumber);
+#ifdef _DEBUG
+				debugPrintf("ASIOUAC: Release ADC interface 0x%X\n", iface->Descriptor().bInterfaceNumber);
+#endif
+				break;
+			}
+			iface = m_asInterfaceList.Next(iface);
 		}
-		iface = m_asInterfaceList.Next(iface);
+	}
+	if(m_dacEndpoint)
+	{
+		USBAudioStreamingInterface * iface = m_asInterfaceList.First();
+		while(iface)
+		{
+			if(iface->Descriptor().bInterfaceNumber == m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber &&
+				iface->m_endpointsList.Count() == 0)
+			{
+			
+				UsbSetAltInterface(iface->Descriptor().bInterfaceNumber, iface->Descriptor().bAlternateSetting);
+				UsbReleaseInterface(iface->Descriptor().bInterfaceNumber);
+#ifdef _DEBUG
+				debugPrintf("ASIOUAC: Release DAC interface 0x%X\n", iface->Descriptor().bInterfaceNumber);
+#endif
+				break;
+			}
+			iface = m_asInterfaceList.Next(iface);
+		}
 	}
 
 	return retVal;
@@ -529,10 +616,65 @@ void USBAudioDevice::SetADCCallback(FillDataCallback writeDataCb, void* context)
 
 int USBAudioDevice::GetInputChannelNumber()
 {
+	if(!IsValidDevice())
+		return 0;
 	return m_useInput ? 2 : 0;
 }
 
 int USBAudioDevice::GetOutputChannelNumber()
 {
+	if(!IsValidDevice())
+		return 0;
 	return 2;
+}
+
+USBAudioInTerminal* USBAudioDevice::FindInTerminal(int id)
+{
+	USBAudioControlInterface * iface = m_acInterfaceList.First();
+	while(iface)
+	{
+		USBAudioInTerminal * elem = iface->m_inTerminalList.First();
+		while(elem)
+		{
+			if(elem->m_inTerminal.bTerminalID == id)
+				return elem;
+			elem = iface->m_inTerminalList.Next(elem);
+		}
+		iface = m_acInterfaceList.Next(iface);
+	}
+	return NULL;
+}
+
+USBAudioFeatureUnit* USBAudioDevice::FindFeatureUnit(int id)
+{
+	USBAudioControlInterface * iface = m_acInterfaceList.First();
+	while(iface)
+	{
+		USBAudioFeatureUnit * elem = iface->m_featureUnitList.First();
+		while(elem)
+		{
+			if(elem->m_featureUnit.bUnitID == id)
+				return elem;
+			elem = iface->m_featureUnitList.Next(elem);
+		}
+		iface = m_acInterfaceList.Next(iface);
+	}
+	return NULL;
+}
+
+USBAudioOutTerminal* USBAudioDevice::FindOutTerminal(int id)
+{
+	USBAudioControlInterface * iface = m_acInterfaceList.First();
+	while(iface)
+	{
+		USBAudioOutTerminal * elem = iface->m_outTerminalList.First();
+		while(elem)
+		{
+			if(elem->m_outTerminal.bTerminalID == id)
+				return elem;
+			elem = iface->m_outTerminalList.Next(elem);
+		}
+		iface = m_acInterfaceList.Next(iface);
+	}
+	return NULL;
 }
