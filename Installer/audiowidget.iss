@@ -22,6 +22,7 @@ AppPublisherURL = https://sites.google.com/site/nikkov/home
 AppVersion = 0.1.0.0
 DefaultDirName = {pf}\Audio-Widget
 DefaultGroupName = Audio-Widget
+OutputBaseFilename=AWSetup
 Compression = lzma
 SolidCompression = yes
 ; Win2000 or higher
@@ -38,6 +39,8 @@ PrivilegesRequired = admin
 ;Source: "driver_installer.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder;
 Source: "InstallDriver.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder
 Source: "WidgetControl.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder
+Source: "test.ini"; DestDir: "{app}"; Flags: replacesameversion promptifolder
+Source: "WidgetTest.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder
 ;Source: "registerASIO.cmd"; DestDir: "{app}"; Flags: replacesameversion promptifolder
 Source: "asiouac2.dll"; DestDir: "{app}"; Flags: promptifolder regserver replacesameversion
 ;this file used only for registration ASIO driver before than user made first connect device
