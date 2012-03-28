@@ -142,10 +142,12 @@ private:
 	USBAudioInterface*	m_lastParsedInterface;
 	USBEndpoint*		m_lastParsedEndpoint;
 
-	FeedbackInfo	m_fbInfo;
-	AudioDAC*		m_dac;
-	AudioADC*		m_adc;
-	AudioFeedback*	m_feedback;
+	FeedbackInfo		m_fbInfo;
+	AudioDAC*			m_dac;
+	AudioADC*			m_adc;
+	AudioFeedback*		m_feedback;
+
+	bool				m_isStarted;
 };
 
 #endif //__USBAUDIO_DEVICE_H__

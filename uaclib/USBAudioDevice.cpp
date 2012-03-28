@@ -59,7 +59,7 @@ void debugPrintf(const char *szFormat, ...)
 
 USBAudioDevice::USBAudioDevice(bool useInput) : m_fbInfo(), m_dac(NULL), m_adc(NULL), m_feedback(NULL), m_useInput(useInput),
 	m_lastParsedInterface(NULL), m_lastParsedEndpoint(NULL), m_audioClass(0),
-	m_dacEndpoint(NULL), m_adcEndpoint(NULL), m_fbEndpoint(NULL), m_notifyCallback(NULL), m_notifyCallbackContext(NULL)
+	m_dacEndpoint(NULL), m_adcEndpoint(NULL), m_fbEndpoint(NULL), m_notifyCallback(NULL), m_notifyCallbackContext(NULL), m_isStarted(FALSE)
 {
 	InitDescriptors();
 }
@@ -243,7 +243,6 @@ bool USBAudioDevice::InitDevice()
 #endif
 					m_feedback = new AudioFeedback();
 					m_feedback->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, epoint->m_descriptor.bInterval, 4);
-					m_feedback->InitFeedback();
 					m_fbEndpoint = epoint;
 					break;
 				}
@@ -254,11 +253,12 @@ bool USBAudioDevice::InitDevice()
 			iface = m_asInterfaceList.Next(iface);
 		}
 	}
+//	return TRUE;
 
 	USBAudioStreamingInterface * iface = m_asInterfaceList.First();
 	while(iface)
 	{
-		if(m_fbEndpoint && m_fbEndpoint->m_interface == iface) //out endpoint and feedback endpoint in same interface
+		if(!m_fbEndpoint || m_fbEndpoint->m_interface == iface) //out endpoint and feedback endpoint in same interface
 		{
 			USBAudioStreamingEndpoint * epoint = iface->m_endpointsList.First();
 			while(epoint)
@@ -504,7 +504,7 @@ bool USBAudioDevice::CanSampleRate(int freq)
 
 bool USBAudioDevice::Start()
 {
-	if(!IsValidDevice())
+	if(m_isStarted || !IsValidDevice())
 		return FALSE;
 
 	bool retVal = TRUE;
@@ -512,6 +512,18 @@ bool USBAudioDevice::Start()
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: USBAudioDevice start\n");
 #endif
+
+	if(m_adcEndpoint)
+	{
+		UsbClaimInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber);
+		UsbSetAltInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Claim ADC interface 0x%X (alt 0x%X)\n", m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, 
+			m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
+#endif
+		if(m_adc != NULL)
+			retVal &= m_adc->Start();
+	}
 
 	if(m_dacEndpoint)
 	{
@@ -521,31 +533,19 @@ bool USBAudioDevice::Start()
 		debugPrintf("ASIOUAC: Claim DAC interface 0x%X (alt 0x%X)\n", m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, 
 			m_dacEndpoint->m_interface->Descriptor().bAlternateSetting);
 #endif
+		if(m_feedback != NULL)
+			retVal &= m_feedback->Start();
+
+		if(m_dac != NULL)
+			retVal &= m_dac->Start();
 	}
-	if(m_adcEndpoint)
-	{
-		UsbClaimInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber);
-		UsbSetAltInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: Claim ADC interface 0x%X (alt 0x%X)\n", m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, 
-			m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
-#endif
-	}
-
-	if(m_dac != NULL)
-		retVal &= m_dac->Start();
-
-	if(m_adc != NULL)
-		retVal &= m_adc->Start();
-	if(m_feedback != NULL)
-		retVal &= m_feedback->Start();
-
+	m_isStarted = TRUE;
 	return retVal;
 }
 
 bool USBAudioDevice::Stop()
 {
-	if(!IsValidDevice())
+	if(!m_isStarted || !IsValidDevice())
 		return FALSE;
 
 #ifdef _DEBUG
@@ -555,10 +555,12 @@ bool USBAudioDevice::Stop()
 
 	if(m_dac != NULL)
 		retVal &= m_dac->Stop();
-	if(m_adc != NULL)
-		retVal &= m_adc->Stop();
+
 	if(m_feedback != NULL)
 		retVal &= m_feedback->Stop();
+
+	if(m_adc != NULL)
+		retVal &= m_adc->Stop();
 
 	if(m_adcEndpoint)
 	{
@@ -599,6 +601,7 @@ bool USBAudioDevice::Stop()
 		}
 	}
 
+	m_isStarted = FALSE;
 	return retVal;
 }
 

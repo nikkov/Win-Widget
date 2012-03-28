@@ -185,7 +185,7 @@ bool AudioTask::Work(volatile TaskState& taskState)
 #endif
 		return TRUE;
 	}
-	if(!m_device->OvlWait(nextXfer->OvlHandle, 100, KOVL_WAIT_FLAG_NONE, &transferred))
+	if(!m_device->OvlWait(nextXfer->OvlHandle, 500, KOVL_WAIT_FLAG_NONE, &transferred))
 	{
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: %s OvlK_Wait failed. ErrorCode: %08Xh\n", TaskName(),  GetLastError());
@@ -320,23 +320,34 @@ bool AudioADCTask::RWBuffer(ISOBuffer* nextXfer, int len)
 	return TRUE;
 }
 
+#define PACK_ADC_BUFFER
+
 void AudioADCTask::ProcessBuffer(ISOBuffer* buffer)
 {
 	int packetLength = 0;
 	int recLength = 0;
 	for(int i = 0; i < buffer->IsoContext->NumberOfPackets; i++)
 	{
-		//здесь, возможно, надо сначала упаковать все в один буффер, а затем пихать в колбэк
 		packetLength = buffer->IsoContext->IsoPackets[i].Length;
+#ifdef PACK_ADC_BUFFER
+		memcpy(buffer->DataBuffer + recLength, buffer->DataBuffer + buffer->IsoPackets[i].Offset, packetLength);
 		recLength += packetLength;
-		if(m_writeDataCb)
+#else
+		recLength += packetLength;
+		if(m_writeDataCb && packetLength > 0)
 			m_writeDataCb(m_writeDataCbContext, buffer->DataBuffer + buffer->IsoPackets[i].Offset, packetLength);
+#endif
 	}
+#ifdef PACK_ADC_BUFFER
+	if(m_writeDataCb)
+		m_writeDataCb(m_writeDataCbContext, buffer->DataBuffer, recLength);
+#endif
 	if(m_feedbackInfo)
 	{
-		int d1 = recLength / buffer->IsoContext->NumberOfPackets;
-		int d2 = recLength % buffer->IsoContext->NumberOfPackets;
-		m_feedbackInfo->SetValue(d1 + (d2 >> 14));
+		int div = buffer->IsoContext->NumberOfPackets * m_channelNumber * m_sampleSize * (1 << (m_interval - 1)) / 8;
+		int d1 = recLength / div;
+		int d2 = recLength % div;
+		m_feedbackInfo->SetValue((d1 << 14) + d2);
 	}
 }
 

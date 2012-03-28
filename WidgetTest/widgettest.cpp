@@ -34,18 +34,15 @@ struct ThreeByteSample
 	UCHAR sample[3];
 	ThreeByteSample(int val = 0)
 	{
-		memcpy(sample, &val, 3);
-
-/*
-		sample[0] = (val >> 0) & 0xff;
-		sample[1] = (val >> 8) & 0xff;
-		sample[2] = (val >> 16) & 0xff;
-*/
+		UCHAR *ptrVal = (UCHAR *)&val;
+		sample[0] = *(ptrVal);
+		sample[1] = *(ptrVal+1);
+		sample[2] = *(ptrVal+2);
 	}
 
 	operator int()const
 	{
-		return (sample[0] << 0) + (sample[1] << 16) + (sample[2] << 8);
+		return (sample[0] << 0) + (sample[1] << 8) + (sample[2] << 16);
 	}
 };
 
@@ -119,7 +116,7 @@ int main(int argc, char* argv[])
 		freq = atoi(argv[1]);
 	do
 	{
-		USBAudioDevice device(false);
+		USBAudioDevice device(true);
 		device.InitDevice();
 		
 		if(device.GetDACSubslotSize() == 3)

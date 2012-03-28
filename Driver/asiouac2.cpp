@@ -23,7 +23,8 @@
 #include <string.h>
 #include "asiouac2.h"
 
-#define _DeviceInterfaceGUID "{09e4c63c-ce0f-168c-1862-06410a764a35}"
+
+#define DEFAULT_BLOCK_SIZE 256
 
 extern void debugPrintf(const char *szFormat, ...);
 
@@ -132,7 +133,8 @@ HRESULT _stdcall DllUnregisterServer()
 //------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------
 AsioUAC2::AsioUAC2 (LPUNKNOWN pUnk, HRESULT *phr)
-	: CUnknown("ASIOUAC2", pUnk, phr), callbacks(NULL), inputBuffers(NULL), outputBuffers(NULL), inMap(NULL), outMap(NULL), m_device(NULL)
+	: CUnknown("ASIOUAC2", pUnk, phr), callbacks(NULL), inputBuffers(NULL), outputBuffers(NULL), 
+	inMap(NULL), outMap(NULL), m_device(NULL), m_AsioSyncEvent(NULL), m_BufferSwitchEvent(NULL), m_StopInProgress(false)
 
 
 //------------------------------------------------------------------------------------------
@@ -140,13 +142,14 @@ AsioUAC2::AsioUAC2 (LPUNKNOWN pUnk, HRESULT *phr)
 #else
 
 // when not on windows, we derive from AsioDriver
-AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outputBuffers(NULL), inMap(NULL), outMap(NULL), m_device(NULL)
+AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outputBuffers(NULL), 
+	inMap(NULL), outMap(NULL), m_device(NULL), m_AsioSyncEvent(NULL), m_BufferSwitchEvent(NULL), m_StopInProgress(false)
 
 #endif
 {
 // ASIO
 	//block number by default
-	blockFrames = 32;
+	blockFrames = DEFAULT_BLOCK_SIZE;
 
 	inputLatency = blockFrames;		// typically
 	outputLatency = blockFrames * 2;
@@ -179,6 +182,11 @@ AsioUAC2::~AsioUAC2 ()
 	inputClose ();
 	disposeBuffers ();
 	delete m_device;
+
+	if(m_AsioSyncEvent)
+		CloseHandle(m_AsioSyncEvent);
+	if(m_BufferSwitchEvent)
+		CloseHandle(m_BufferSwitchEvent);
 }
 
 //------------------------------------------------------------------------------------------
@@ -202,7 +210,7 @@ void AsioUAC2::getErrorMessage (char *string)
 //------------------------------------------------------------------------------------------
 ASIOBool AsioUAC2::init (void* sysRef)
 {
-	m_device = new USBAudioDevice(false);
+	m_device = new USBAudioDevice(true);
 	m_device->InitDevice();
 
 	if (inputOpen ())
@@ -241,6 +249,9 @@ ASIOBool AsioUAC2::init (void* sysRef)
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::start ()
 {
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Try start device...");
+#endif
 	if(started)
 	{
 #ifdef _DEBUG
@@ -271,6 +282,10 @@ ASIOError AsioUAC2::start ()
 		return ASE_OK;
 #else
 		// activate hardware
+		m_StopInProgress = false;
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Exit flag cleared");
+#endif
 		ASIOError retVal = m_device->Start() ? ASE_OK : ASE_HWMalfunction;
 		if(retVal == ASE_OK)
 		{
@@ -293,6 +308,9 @@ ASIOError AsioUAC2::start ()
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::stop ()
 {
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Try stop device...");
+#endif
 	if(!started)
 	{
 #ifdef _DEBUG
@@ -314,10 +332,20 @@ ASIOError AsioUAC2::stop ()
 	return ASE_OK;
 #else
 	// de-activate hardware
+	m_StopInProgress = true;
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Exit flag is set");
+#endif
+	if(m_AsioSyncEvent)
+		SetEvent(m_AsioSyncEvent);
+	if(m_BufferSwitchEvent)
+		SetEvent(m_BufferSwitchEvent);
+
 	ASIOError retVal = m_device->Stop() ? ASE_OK : ASE_HWMalfunction;
+	
 	if(retVal == ASE_OK)
 	{
-		m_device->SetNotifyCallback(AsioUAC2::sDeviceNotify, this);
+		m_device->SetNotifyCallback(NULL, this);
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: Device stoped successfully!");
 #endif
@@ -396,6 +424,9 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 	if(!m_device)
 		return ASE_HWMalfunction;
 	int iSampleRate = (int)sampleRate;
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: Try change samplerate to %d", iSampleRate);
+#endif
 
 	if (sampleRate != this->sampleRate)
 	{
@@ -415,7 +446,7 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 		else
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Samplerate not changed to %d", (int)this->sampleRate);
+			debugPrintf("ASIOUAC: Samplerate not changed to %d", iSampleRate);
 #endif
 			return ASE_NoClock;
 		}
@@ -557,6 +588,9 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 			inMap[activeInputs] = info->channelNum;
 			inputBuffers[activeInputs] = new char[m_inputSampleSize * blockFrames * 2];	// double buffer
 			memset(inputBuffers[activeInputs], 0, blockFrames * 2 * m_inputSampleSize);
+#ifdef _DEBUG
+			debugPrintf("ASIOUAC: Buffer for input channel %d allocated with size %d", activeInputs, (int)blockFrames * 2 * m_inputSampleSize);
+#endif
 			if (inputBuffers[activeInputs])
 			{
 				info->buffers[0] = inputBuffers[activeInputs];
@@ -578,6 +612,9 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 			outMap[activeOutputs] = info->channelNum;
 			outputBuffers[activeOutputs] = new char[m_outputSampleSize * blockFrames * 2];	// double buffer
 			memset(outputBuffers[activeOutputs], 0, blockFrames * 2 * m_outputSampleSize);
+#ifdef _DEBUG
+			debugPrintf("ASIOUAC: Buffer for output channel %d allocated with size %d", activeOutputs, (int)blockFrames * 2 * m_outputSampleSize);
+#endif
 			if (outputBuffers[activeOutputs])
 			{
 				info->buffers[0] = outputBuffers[activeOutputs];
@@ -623,6 +660,9 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: Create buffers with length %d OK", blockFrames);
 #endif
+
+	m_BufferSwitchEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+
 	return ASE_OK;
 
 error:
@@ -648,6 +688,11 @@ ASIOError AsioUAC2::disposeBuffers()
 	for (i = 0; i < activeOutputs; i++)
 		delete outputBuffers[i];
 	activeOutputs = 0;
+
+	if(m_BufferSwitchEvent)
+		CloseHandle(m_BufferSwitchEvent);
+	m_BufferSwitchEvent = NULL;
+	
 	return ASE_OK;
 }
 
@@ -703,6 +748,15 @@ bool AsioUAC2::inputOpen ()
 		inputBuffers[i] = NULL;
 		inMap[i] = 0;
 	}
+
+	if(m_inputSampleSize == 4)
+		m_device->SetADCCallback(AsioUAC2::sFillInputData4, (void*)this);
+	else
+		if(m_inputSampleSize == 3)
+			m_device->SetADCCallback(AsioUAC2::sFillInputData3, (void*)this);
+
+	m_AsioSyncEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+
 	return true;
 }
 
@@ -713,9 +767,12 @@ void AsioUAC2::inputClose ()
 		delete inMap;
 	if(inputBuffers)
 		delete inputBuffers;
+	if(m_AsioSyncEvent)
+		CloseHandle(m_AsioSyncEvent);
 	m_NumInputs = 0;
 	inMap = NULL;
 	inputBuffers = NULL;
+	m_AsioSyncEvent = NULL;
 }
 
 //---------------------------------------------------------------------------------------------
@@ -791,6 +848,7 @@ void AsioUAC2::bufferSwitch ()
 		//debugPrintf("ASIOUAC: Buffer switched to %d, samplePosition %d, blockFrames %d", toggle, (int)samplePosition, blockFrames);
 #endif
 	}
+	SetEvent(m_BufferSwitchEvent);
 }
 
 //---------------------------------------------------------------------------------------------
@@ -829,12 +887,10 @@ struct ThreeByteSample
 	UCHAR sample[3];
 	ThreeByteSample(int val = 0)
 	{
-		memcpy(sample, &val, 3);
-/*
-		sample[0] = (val >> 16) & 0xff;
-		sample[1] = (val >> 0) & 0xff;
-		sample[2] = (val >> 8) & 0xff;
-*/
+		UCHAR *ptrVal = (UCHAR *)&val;
+		sample[0] = *(ptrVal);
+		sample[1] = *(ptrVal+1);
+		sample[2] = *(ptrVal+2);
 	}
 /*
 	operator int()const
@@ -880,10 +936,12 @@ struct AudioSample4
 
 template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *buffer, int& len)
 {
+	if(m_StopInProgress)
+		return;
 	T_DST *sampleBuff = (T_DST *)buffer;
 	int sampleLength = len / sizeof(T_DST);
 #ifdef _DEBUG
-	//debugPrintf("ASIOUAC: Fill data with length %d, currentBufferPosition %d", sampleLength, currentBufferPosition);
+	//debugPrintf("ASIOUAC: Fill output data with length %d, currentBufferPosition %d", sampleLength, currentOutBufferPosition);
 #endif
 
 	T_SRC *hostBuffer0 = toggle ? ((T_SRC*)outputBuffers[0]) + blockFrames : (T_SRC*)outputBuffers[0];
@@ -891,6 +949,14 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 
 	for(int i = 0; i < sampleLength; i++)
 	{
+		if(m_StopInProgress)
+		{
+#ifdef _DEBUG
+			debugPrintf("ASIOUAC: Detected exit flag in output thread!");
+#endif
+			return;
+		}
+
 		sampleBuff[i].left =  hostBuffer0[currentOutBufferPosition];
 		sampleBuff[i].right = hostBuffer1[currentOutBufferPosition];
 
@@ -898,6 +964,24 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 		if(currentOutBufferPosition == blockFrames)
 		{
 			currentOutBufferPosition = 0;
+			//need syncro with intput buffer
+			if(activeInputs && m_AsioSyncEvent)
+			{
+				if(WaitForSingleObject(m_AsioSyncEvent, 100) == WAIT_TIMEOUT)
+				{
+#ifdef _DEBUG
+					debugPrintf("ASIOUAC: Waiting input buffer error!");
+#endif
+					break;
+				}
+			}
+			if(m_StopInProgress)
+			{
+#ifdef _DEBUG
+				debugPrintf("ASIOUAC: Detected exit flag in output thread!");
+#endif
+				return;
+			}
 			bufferSwitch ();
 			hostBuffer0 = toggle ? ((T_SRC*)outputBuffers[0]) + blockFrames : (T_SRC*)outputBuffers[0];
 			hostBuffer1 = toggle ? ((T_SRC*)outputBuffers[1]) + blockFrames : (T_SRC*)outputBuffers[1];
@@ -907,10 +991,12 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 
 template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *buffer, int& len)
 {
+	if(activeInputs == 0 || m_StopInProgress)
+		return;
 	T_SRC *sampleBuff = (T_SRC *)buffer;
 	int sampleLength = len / sizeof(T_SRC);
 #ifdef _DEBUG
-	//debugPrintf("ASIOUAC: Fill data with length %d, currentBufferPosition %d", sampleLength, currentBufferPosition);
+	//debugPrintf("ASIOUAC: Fill input data with length %d, currentBufferPosition %d", sampleLength, currentInBufferPosition);
 #endif
 
 	T_DST *hostBuffer0 = toggle ? ((T_DST*)inputBuffers[0]) + blockFrames : (T_DST*)inputBuffers[0];
@@ -918,6 +1004,12 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 
 	for(int i = 0; i < sampleLength; i++)
 	{
+		if(m_StopInProgress)
+		{
+#ifdef _DEBUG
+			debugPrintf("ASIOUAC: Detected exit flag in input thread!");
+#endif
+		}
 		hostBuffer0[currentInBufferPosition] = sampleBuff[i].left;
 		hostBuffer1[currentInBufferPosition] = sampleBuff[i].right;
 
@@ -925,7 +1017,38 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 		if(currentInBufferPosition == blockFrames)
 		{
 			currentInBufferPosition = 0;
-			bufferSwitch ();
+			//need syncro with output buffer
+			if(activeOutputs)
+			{
+				//inform output thread
+				SetEvent(m_AsioSyncEvent);
+				//waiting switch
+				if(WaitForSingleObject(m_BufferSwitchEvent, 100) == WAIT_TIMEOUT)
+				{
+#ifdef _DEBUG
+					debugPrintf("ASIOUAC: Waiting buffer switch error!");
+#endif
+					break;
+				}
+				if(m_StopInProgress)
+				{
+#ifdef _DEBUG
+					debugPrintf("ASIOUAC: Detected exit flag in input thread!");
+#endif
+					return;
+				}
+			}
+			else
+			{
+				if(m_StopInProgress)
+				{
+#ifdef _DEBUG
+					debugPrintf("ASIOUAC: Detected exit flag in input thread!");
+#endif
+					return;
+				}
+				bufferSwitch ();
+			}
 			hostBuffer0 = toggle ? ((T_DST*)inputBuffers[0]) + blockFrames : (T_DST*)inputBuffers[0];
 			hostBuffer1 = toggle ? ((T_DST*)inputBuffers[1]) + blockFrames : (T_DST*)inputBuffers[1];
 		}

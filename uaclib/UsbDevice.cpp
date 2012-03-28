@@ -42,7 +42,7 @@ int deviceIDNum = sizeof(deviceID)/sizeof(DeviceID);
 
 #define _DeviceInterfaceGUID "{09e4c63c-ce0f-168c-1862-06410a764a35}"
 
-USBDevice::USBDevice() : m_usbDeviceHandle(NULL), m_errorCode(ERROR_SUCCESS), m_deviceSpeed(HighSpeed)
+USBDevice::USBDevice() : m_usbDeviceHandle(NULL), m_errorCode(ERROR_SUCCESS), m_deviceSpeed(HighSpeed), m_deviceMutex(NULL)
 {
 	InitDescriptors();
 #ifdef _DEBUG
@@ -56,6 +56,8 @@ USBDevice::~USBDevice()
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: ~USBDevice()\n");
 #endif
+	if(m_deviceMutex)
+		CloseHandle(m_deviceMutex);
 }
 
 void USBDevice::FreeDevice()
@@ -198,6 +200,21 @@ bool USBDevice::InitDevice()
 {
 	BYTE configDescriptorBuffer[4096];
 	ULONG lengthTransferred;
+
+	m_deviceMutex = CreateMutex(NULL, FALSE, "Global\\ASIOUAC2");
+	if(GetLastError() == ERROR_ALREADY_EXISTS)
+	{
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: Can't start device! Device already used!\n");
+#endif
+		if(m_deviceMutex)
+		{
+			CloseHandle(m_deviceMutex);
+			m_deviceMutex = NULL;
+			m_errorCode = ERROR_BUSY;
+		}
+		return FALSE;
+	}
 
 	FreeDevice();
 	InitDescriptors();

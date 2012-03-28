@@ -438,7 +438,7 @@ protected:
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
-	AudioADCTask() : AudioTask(32, "Audio DAC task"), m_feedbackInfo(NULL), m_writeDataCb(NULL), m_writeDataCbContext(NULL)
+	AudioADCTask() : AudioTask(16, "Audio ADC task"), m_feedbackInfo(NULL), m_writeDataCb(NULL), m_writeDataCbContext(NULL)
 	{}
 
 	~AudioADCTask()
@@ -550,9 +550,6 @@ public:
 	{
 		m_Task.Init(device, pipeId, maximumPacketSize, interval, 1, valueSize);
 		m_Task.SetFeedbackInfo(fb);
-	}
-	void InitFeedback()
-	{
 		m_Task.SetSampleFreq(48000); //set any sample rate only for allocate buffers
 	}
 };

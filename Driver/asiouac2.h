@@ -185,7 +185,10 @@ private:
 	ASIOError StopDevice();
 	int currentOutBufferPosition;
 	int currentInBufferPosition;
-	HANDLE deviceMutex;
+
+	volatile bool	m_StopInProgress;
+	HANDLE	m_AsioSyncEvent;
+	HANDLE	m_BufferSwitchEvent;
 };
 
 #endif

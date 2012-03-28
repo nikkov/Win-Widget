@@ -55,6 +55,9 @@ class USBDevice
 
 	//device speed LowSpeed=0x01, FullSpeed=0x02, HighSpeed=0x03
 	int								m_deviceSpeed;
+	HANDLE							m_deviceMutex;
+
+
 	KUSB_HANDLE FindDevice();
 	bool ParseDescriptors(BYTE *configDescr, DWORD length);
 	void InitDescriptors();
