@@ -22,6 +22,21 @@
 #include "USBAudioDevice.h"
 #include "tlist.h"
 
+#ifdef _DEBUG
+
+void debugPrintf(const char *szFormat, ...)
+{
+    char str[4096];
+    va_list argptr;
+    va_start(argptr, szFormat);
+    vsprintf_s(str, szFormat, argptr);
+    va_end(argptr);
+
+    printf(str);
+    //OutputDebugString(str);
+}
+#endif
+
 
 struct AudioSample4
 {

@@ -26,7 +26,19 @@
 
 #define DEFAULT_BLOCK_SIZE 256
 
-extern void debugPrintf(const char *szFormat, ...);
+#ifdef _DEBUG
+void debugPrintf(const char *szFormat, ...)
+{
+    char str[4096];
+    va_list argptr;
+    va_start(argptr, szFormat);
+    vsprintf(str, szFormat, argptr);
+    va_end(argptr);
+
+    OutputDebugString(str);
+}
+#endif
+
 
 //------------------------------------------------------------------------------------------
 

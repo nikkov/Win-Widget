@@ -106,6 +106,7 @@ bool AudioTask::AfterStop()
     // Free the overlapped pool.
     OvlK_Free(m_OvlPool);
 	m_isStarted = FALSE;
+	AfterStopInternal();
 #ifdef _DEBUG
 	debugPrintf("ASIOUAC: %s. After stop thread is OK\n", TaskName());
 #endif
@@ -207,11 +208,22 @@ bool AudioTask::Work(volatile TaskState& taskState)
 bool AudioDACTask::BeforeStartInternal()
 {
 	UCHAR policyValue = 1;
+	if(m_feedbackInfo)
+	{
+		m_feedbackInfo->ClearStatistics();
+#ifdef _DEBUG
+		debugPrintf("ASIOUAC: %s. Clear feedback statistics\n", TaskName());
+#endif
+	}
 	return m_device->UsbSetPipePolicy((UCHAR)m_pipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue);
 }
 
 bool AudioDACTask::AfterStopInternal()
 {
+#ifdef _DEBUG
+	if(m_feedbackInfo)
+		debugPrintf("ASIOUAC: %s. Maximum feedback value (%f), minimum feedback value (%f)\n", TaskName(),  m_feedbackInfo->GetMaxValue(), m_feedbackInfo->GetMinValue());
+#endif
 	return TRUE;
 }
 
@@ -379,13 +391,6 @@ void AudioFeedbackTask::ProcessBuffer(ISOBuffer* nextXfer)
 	{
 		int feedback = *((int*)(nextXfer->DataBuffer + isoPacket.Offset));
 		m_feedbackInfo->SetValue(feedback);
-#ifdef _DEBUG
-		if(m_lastFeedbackValue != (int)m_feedbackInfo->GetValue())
-		{
-			m_lastFeedbackValue = (int)m_feedbackInfo->GetValue();
-			debugPrintf("ASIOUAC: %s. Read feedback value: %f (raw = %d)\n", TaskName(), m_feedbackInfo->GetValue(), feedback);
-		}
-#endif
 	}
 }
 

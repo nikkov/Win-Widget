@@ -44,19 +44,6 @@
 #include "USBAudioDevice.h"
 
 
-#ifdef _DEBUG
-void debugPrintf(const char *szFormat, ...)
-{
-    char str[4096];
-    va_list argptr;
-    va_start(argptr, szFormat);
-    vsprintf(str, szFormat, argptr);
-    va_end(argptr);
-
-    OutputDebugString(str);
-}
-#endif
-
 USBAudioDevice::USBAudioDevice(bool useInput) : m_fbInfo(), m_dac(NULL), m_adc(NULL), m_feedback(NULL), m_useInput(useInput),
 	m_lastParsedInterface(NULL), m_lastParsedEndpoint(NULL), m_audioClass(0),
 	m_dacEndpoint(NULL), m_adcEndpoint(NULL), m_fbEndpoint(NULL), m_notifyCallback(NULL), m_notifyCallbackContext(NULL), m_isStarted(FALSE)

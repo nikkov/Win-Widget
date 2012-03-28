@@ -18,6 +18,7 @@
 #include <windows.h>
 #include <string.h>
 #include <tchar.h>
+#include <math.h>
 
 #ifdef _DEBUG
 extern void debugPrintf(const _TCHAR *szFormat, ...);
@@ -44,6 +45,9 @@ class FeedbackInfo
 {
 	Mutex m_guard;
 	float cur_value;
+
+	float max_value;
+	float min_value;
 public:
 	FeedbackInfo()
 	{
@@ -52,7 +56,18 @@ public:
 	void SetValue(int feedbackValue)
 	{
 		m_guard.Enter();
-		cur_value = (float)feedbackValue / 16384.0f;
+		float newValue = (float)feedbackValue / 16384.0f;
+
+#ifdef _DEBUG
+		//if(newValue > 0.f && fabs(newValue - cur_value) / newValue > 0.000001)
+		if((int)(100*newValue) != (int)(100*cur_value))
+			debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
+#endif
+		cur_value = newValue;
+		if(max_value == 0.f || max_value < cur_value)
+			max_value = cur_value;
+		if(min_value == 0.f || min_value > cur_value)
+			min_value = cur_value;
 		m_guard.Leave();
 	}
 
@@ -61,6 +76,30 @@ public:
 		float retVal;
 		m_guard.Enter();
 		retVal = cur_value;
+		m_guard.Leave();
+		return retVal;
+	}
+
+	void ClearStatistics()
+	{
+		max_value = 0.f;
+		min_value = 0.f;
+	}
+
+	float GetMaxValue()
+	{
+		float retVal;
+		m_guard.Enter();
+		retVal = max_value;
+		m_guard.Leave();
+		return retVal;
+	}
+
+	float GetMinValue()
+	{
+		float retVal;
+		m_guard.Enter();
+		retVal = min_value;
 		m_guard.Leave();
 		return retVal;
 	}
