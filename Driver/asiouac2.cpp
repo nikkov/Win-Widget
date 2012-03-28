@@ -24,7 +24,7 @@
 #include "asiouac2.h"
 
 
-#define DEFAULT_BLOCK_SIZE 256
+#define DEFAULT_BLOCK_SIZE 32
 
 #ifdef _DEBUG
 void debugPrintf(const char *szFormat, ...)
@@ -184,6 +184,9 @@ AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outp
 	//read position in buffer
 	currentOutBufferPosition = 0;
 	currentInBufferPosition = 0;
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: AsioUAC2::AsioUAC2()\n");
+#endif
 }
 
 //------------------------------------------------------------------------------------------
@@ -199,6 +202,9 @@ AsioUAC2::~AsioUAC2 ()
 		CloseHandle(m_AsioSyncEvent);
 	if(m_BufferSwitchEvent)
 		CloseHandle(m_BufferSwitchEvent);
+#ifdef _DEBUG
+	debugPrintf("ASIOUAC: AsioUAC2::~AsioUAC2()\n");
+#endif
 }
 
 //------------------------------------------------------------------------------------------
@@ -235,14 +241,14 @@ ASIOBool AsioUAC2::init (void* sysRef)
 		else
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Output open error!!");
+			debugPrintf("ASIOUAC: Output open error!!\n");
 #endif
 		}
 	}
 	else
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Input open error!!");
+		debugPrintf("ASIOUAC: Input open error!!\n");
 #endif
 	}
 	//timerOff ();		// de-activate 'hardware'
@@ -262,19 +268,19 @@ ASIOBool AsioUAC2::init (void* sysRef)
 ASIOError AsioUAC2::start ()
 {
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Try start device...");
+	debugPrintf("ASIOUAC: Try start device...\n");
 #endif
 	if(started)
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Can't start device: already started!");
+		debugPrintf("ASIOUAC: Can't start device: already started!\n");
 #endif
 		return ASE_OK; //ASE_InvalidMode;
 	}
 	if(!m_device)
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Can't start device: m_device==NULL!");
+		debugPrintf("ASIOUAC: Can't start device: m_device==NULL!\n");
 #endif
 		return ASE_HWMalfunction;
 	}
@@ -296,13 +302,13 @@ ASIOError AsioUAC2::start ()
 		// activate hardware
 		m_StopInProgress = false;
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Exit flag cleared");
+		debugPrintf("ASIOUAC: Exit flag cleared\n");
 #endif
 		ASIOError retVal = m_device->Start() ? ASE_OK : ASE_HWMalfunction;
 		if(retVal == ASE_OK)
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Device started successfully!");
+			debugPrintf("ASIOUAC: Device started successfully!\n");
 #endif
 			m_device->SetNotifyCallback(AsioUAC2::sDeviceNotify, this);
 			started = true;
@@ -312,7 +318,7 @@ ASIOError AsioUAC2::start ()
 #endif
 	}
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Can't start device: callbacks is NULL!");
+	debugPrintf("ASIOUAC: Can't start device: callbacks is NULL!\n");
 #endif
 	return ASE_NotPresent;
 }
@@ -321,19 +327,19 @@ ASIOError AsioUAC2::start ()
 ASIOError AsioUAC2::stop ()
 {
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Try stop device...");
+	debugPrintf("ASIOUAC: Try stop device...\n");
 #endif
 	if(!started)
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Can't stop device: already stoped!");
+		debugPrintf("ASIOUAC: Can't stop device: already stoped!\n");
 #endif
 		return ASE_OK;//ASE_InvalidMode;
 	}
 	if(!m_device)
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Can't stop device: m_device==NULL!");
+		debugPrintf("ASIOUAC: Can't stop device: m_device==NULL!\n");
 #endif
 		return ASE_HWMalfunction;
 	}
@@ -346,7 +352,7 @@ ASIOError AsioUAC2::stop ()
 	// de-activate hardware
 	m_StopInProgress = true;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Exit flag is set");
+	debugPrintf("ASIOUAC: Exit flag is set\n");
 #endif
 	if(m_AsioSyncEvent)
 		SetEvent(m_AsioSyncEvent);
@@ -359,7 +365,7 @@ ASIOError AsioUAC2::stop ()
 	{
 		m_device->SetNotifyCallback(NULL, this);
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: Device stoped successfully!");
+		debugPrintf("ASIOUAC: Device stoped successfully!\n");
 #endif
 		started = false;
 	}
@@ -373,7 +379,7 @@ ASIOError AsioUAC2::getChannels (long *numInputChannels, long *numOutputChannels
 	*numInputChannels = m_NumInputs;
 	*numOutputChannels = m_NumOutputs;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: getChannels request. Number inputs = %d, number outputs = %d", m_NumInputs, m_NumOutputs);
+	debugPrintf("ASIOUAC: getChannels request. Number inputs = %d, number outputs = %d\n", m_NumInputs, m_NumOutputs);
 #endif
 	return ASE_OK;
 }
@@ -384,7 +390,7 @@ ASIOError AsioUAC2::getLatencies (long *_inputLatency, long *_outputLatency)
 	*_inputLatency = inputLatency;
 	*_outputLatency = outputLatency;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: getLatencies request. Input Latency = %d, Output Latency = %d", inputLatency, outputLatency);
+	debugPrintf("ASIOUAC: getLatencies request. Input Latency = %d, Output Latency = %d\n", inputLatency, outputLatency);
 #endif
 	return ASE_OK;
 }
@@ -396,7 +402,7 @@ ASIOError AsioUAC2::getBufferSize (long *minSize, long *maxSize,
 	*minSize = *maxSize = *preferredSize = blockFrames;		// allow this size only
 	*granularity = 0;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: getBufferSize request. MaxSize=maxSize=preferredSize=%d", blockFrames);
+	debugPrintf("ASIOUAC: getBufferSize request. MaxSize=maxSize=preferredSize=%d\n", blockFrames);
 #endif
 	return ASE_OK;
 }
@@ -410,12 +416,12 @@ ASIOError AsioUAC2::canSampleRate (ASIOSampleRate sampleRate)
 	if(m_device->CanSampleRate(iSampleRate))
 	{
 #ifdef _DEBUG
-		debugPrintf("ASIOUAC: canSampleRate request for samplerate %d OK", iSampleRate);
+		debugPrintf("ASIOUAC: canSampleRate request for samplerate %d OK\n", iSampleRate);
 #endif
 		return ASE_OK;
 	}
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: canSampleRate request for samplerate %d error!", iSampleRate);
+	debugPrintf("ASIOUAC: canSampleRate request for samplerate %d error!\n", iSampleRate);
 #endif
 	return ASE_NoClock;
 }
@@ -425,7 +431,7 @@ ASIOError AsioUAC2::getSampleRate (ASIOSampleRate *sampleRate)
 {
 	*sampleRate = this->sampleRate;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: getSampleRate request. Current samplerate %d", (int)*sampleRate);
+	debugPrintf("ASIOUAC: getSampleRate request. Current samplerate %d\n", (int)*sampleRate);
 #endif
 	return ASE_OK;
 }
@@ -437,7 +443,7 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 		return ASE_HWMalfunction;
 	int iSampleRate = (int)sampleRate;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Try change samplerate to %d", iSampleRate);
+	debugPrintf("ASIOUAC: Try change samplerate to %d\n", iSampleRate);
 #endif
 
 	if (sampleRate != this->sampleRate)
@@ -452,13 +458,13 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 				callbacks->sampleRateDidChange (this->sampleRate);
 
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Samplerate changed to %d", (int)this->sampleRate);
+			debugPrintf("ASIOUAC: Samplerate changed to %d\n", (int)this->sampleRate);
 #endif
 		}
 		else
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Samplerate not changed to %d", iSampleRate);
+			debugPrintf("ASIOUAC: Samplerate not changed to %d\n", iSampleRate);
 #endif
 			return ASE_NoClock;
 		}
@@ -478,7 +484,7 @@ ASIOError AsioUAC2::getClockSources (ASIOClockSource *clocks, long *numSources)
 	strcpy(clocks->name, "Internal");
 	*numSources = 1;
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Get clock source req");
+	debugPrintf("ASIOUAC: Get clock source req\n");
 #endif
 	return ASE_OK;
 }
@@ -487,7 +493,7 @@ ASIOError AsioUAC2::getClockSources (ASIOClockSource *clocks, long *numSources)
 ASIOError AsioUAC2::setClockSource (long index)
 {
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Set clock source by index %d", (int)index);
+	debugPrintf("ASIOUAC: Set clock source by index %d\n", (int)index);
 #endif
 	if (!index)
 	{
@@ -547,7 +553,7 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 			}
 	}
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: getChannelInfo request. Channel %d, type %d, slot size %d", info->channel, info->type, slotSize);
+	debugPrintf("ASIOUAC: getChannelInfo request. Channel %d, type %d, slot size %d\n", info->channel, info->type, slotSize);
 #endif
 
 	info->channelGroup = 0;
@@ -601,7 +607,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 			inputBuffers[activeInputs] = new char[m_inputSampleSize * blockFrames * 2];	// double buffer
 			memset(inputBuffers[activeInputs], 0, blockFrames * 2 * m_inputSampleSize);
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Buffer for input channel %d allocated with size %d", activeInputs, (int)blockFrames * 2 * m_inputSampleSize);
+			debugPrintf("ASIOUAC: Buffer for input channel %d allocated with size %d\n", activeInputs, (int)blockFrames * 2 * m_inputSampleSize);
 #endif
 			if (inputBuffers[activeInputs])
 			{
@@ -625,7 +631,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 			outputBuffers[activeOutputs] = new char[m_outputSampleSize * blockFrames * 2];	// double buffer
 			memset(outputBuffers[activeOutputs], 0, blockFrames * 2 * m_outputSampleSize);
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Buffer for output channel %d allocated with size %d", activeOutputs, (int)blockFrames * 2 * m_outputSampleSize);
+			debugPrintf("ASIOUAC: Buffer for output channel %d allocated with size %d\n", activeOutputs, (int)blockFrames * 2 * m_outputSampleSize);
 #endif
 			if (outputBuffers[activeOutputs])
 			{
@@ -670,7 +676,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 		timeInfoMode = false;
 
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Create buffers with length %d OK", blockFrames);
+	debugPrintf("ASIOUAC: Create buffers with length %d OK\n", blockFrames);
 #endif
 
 	m_BufferSwitchEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -680,7 +686,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 error:
 	disposeBuffers();
 #ifdef _DEBUG
-	debugPrintf("ASIOUAC: Create buffers with length %d failed!", blockFrames);
+	debugPrintf("ASIOUAC: Create buffers with length %d failed!\n", blockFrames);
 #endif
 	return ASE_InvalidParameter;
 }
@@ -948,7 +954,7 @@ struct AudioSample4
 
 template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *buffer, int& len)
 {
-	if(m_StopInProgress)
+	if(activeOutputs == 0 || m_StopInProgress)
 		return;
 	T_DST *sampleBuff = (T_DST *)buffer;
 	int sampleLength = len / sizeof(T_DST);
@@ -964,7 +970,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 		if(m_StopInProgress)
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Detected exit flag in output thread!");
+			debugPrintf("ASIOUAC: Detected exit flag in output thread!\n");
 #endif
 			return;
 		}
@@ -982,7 +988,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 				if(WaitForSingleObject(m_AsioSyncEvent, 100) == WAIT_TIMEOUT)
 				{
 #ifdef _DEBUG
-					debugPrintf("ASIOUAC: Waiting input buffer error!");
+					debugPrintf("ASIOUAC: Waiting input buffer error!\n");
 #endif
 					break;
 				}
@@ -990,7 +996,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 			if(m_StopInProgress)
 			{
 #ifdef _DEBUG
-				debugPrintf("ASIOUAC: Detected exit flag in output thread!");
+				debugPrintf("ASIOUAC: Detected exit flag in output thread!\n");
 #endif
 				return;
 			}
@@ -1019,7 +1025,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 		if(m_StopInProgress)
 		{
 #ifdef _DEBUG
-			debugPrintf("ASIOUAC: Detected exit flag in input thread!");
+			debugPrintf("ASIOUAC: Detected exit flag in input thread!\n");
 #endif
 		}
 		hostBuffer0[currentInBufferPosition] = sampleBuff[i].left;
@@ -1038,14 +1044,14 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 				if(WaitForSingleObject(m_BufferSwitchEvent, 100) == WAIT_TIMEOUT)
 				{
 #ifdef _DEBUG
-					debugPrintf("ASIOUAC: Waiting buffer switch error!");
+					debugPrintf("ASIOUAC: Waiting buffer switch error!\n");
 #endif
 					break;
 				}
 				if(m_StopInProgress)
 				{
 #ifdef _DEBUG
-					debugPrintf("ASIOUAC: Detected exit flag in input thread!");
+					debugPrintf("ASIOUAC: Detected exit flag in input thread!\n");
 #endif
 					return;
 				}
@@ -1055,7 +1061,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 				if(m_StopInProgress)
 				{
 #ifdef _DEBUG
-					debugPrintf("ASIOUAC: Detected exit flag in input thread!");
+					debugPrintf("ASIOUAC: Detected exit flag in input thread!\n");
 #endif
 					return;
 				}
