@@ -16,10 +16,10 @@ Name: Russian; MessagesFile: compiler:Languages\Russian.isl; LicenseFile: licens
 
 [Setup]
 AppName = Audio-Widget driver
-AppVerName = Audio-Widget driver 0.1.0.0
+AppVerName = Audio-Widget driver 0.1.1.0
 AppPublisher = Nikolay Kovbasa
 AppPublisherURL = https://sites.google.com/site/nikkov/home
-AppVersion = 0.1.0.0
+AppVersion = 0.1.1.0
 DefaultDirName = {pf}\Audio-Widget
 DefaultGroupName = Audio-Widget
 OutputBaseFilename=AWSetup
@@ -43,10 +43,21 @@ Source: "test.ini"; DestDir: "{app}"; Flags: replacesameversion promptifolder
 Source: "WidgetTest.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder
 ;Source: "registerASIO.cmd"; DestDir: "{app}"; Flags: replacesameversion promptifolder
 Source: "asiouac2.dll"; DestDir: "{app}"; Flags: promptifolder regserver replacesameversion
-Source: "asiouac2debug.dll"; DestDir: "{app}"; Flags: promptifolder regserver replacesameversion
+Source: "asiouac2debug.dll"; DestDir: "{app}"; Flags: promptifolder replacesameversion
 ;this file used only for registration ASIO driver before than user made first connect device
 Source: "libusbK.dll"; DestDir: "{app}"; Flags: promptifolder replacesameversion
 
+Source: "usb_driver\Audio-Widget.inf"; DestDir: "{app}\usb_driver"; Flags: promptifolder replacesameversion
+
+Source: "usb_driver\x86\libusb0_x86.dll"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
+Source: "usb_driver\x86\libusbK_x86.dll"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
+Source: "usb_driver\x86\WdfCoInstaller01009.dll"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
+Source: "usb_driver\x86\libusbK.sys"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
+
+Source: "usb_driver\amd64\libusb0.dll"; DestDir: "{app}\usb_driver\amd64"; Flags: promptifolder replacesameversion
+Source: "usb_driver\amd64\libusbK.dll"; DestDir: "{app}\usb_driver\amd64"; Flags: promptifolder replacesameversion
+Source: "usb_driver\amd64\WdfCoInstaller01009.dll"; DestDir: "{app}\usb_driver\amd64"; Flags: promptifolder replacesameversion
+Source: "usb_driver\amd64\libusbK.sys"; DestDir: "{app}\usb_driver\amd64"; Flags: promptifolder replacesameversion
 
 [Icons]
 Name: {group}\Widget-Control; Filename: {app}\WidgetControl.exe; WorkingDir: {app}; IconFilename: {app}\WidgetControl.exe; IconIndex: 0; Languages: 

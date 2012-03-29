@@ -520,11 +520,11 @@ bool USBAudioDevice::Start()
 		debugPrintf("ASIOUAC: Claim DAC interface 0x%X (alt 0x%X)\n", m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, 
 			m_dacEndpoint->m_interface->Descriptor().bAlternateSetting);
 #endif
-		if(m_feedback != NULL)
-			retVal &= m_feedback->Start();
-
 		if(m_dac != NULL)
 			retVal &= m_dac->Start();
+
+		if(m_feedback != NULL)
+			retVal &= m_feedback->Start();
 	}
 	m_isStarted = TRUE;
 	return retVal;

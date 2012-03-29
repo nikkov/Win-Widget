@@ -186,14 +186,14 @@ bool AudioTask::Work(volatile TaskState& taskState)
 #endif
 		return TRUE;
 	}
-	if(!m_device->OvlWait(nextXfer->OvlHandle, 500, KOVL_WAIT_FLAG_NONE, &transferred))
+	if(!m_device->OvlWait(nextXfer->OvlHandle, 100, KOVL_WAIT_FLAG_NONE, &transferred))
 	{
 #ifdef _DEBUG
 		debugPrintf("ASIOUAC: %s OvlK_Wait failed. ErrorCode: %08Xh\n", TaskName(),  GetLastError());
 #endif
-		//m_device->ClearErrorCode();
-		m_device->Notify(0);
-		return FALSE;
+		m_device->ClearErrorCode();
+		//m_device->Notify(0);
+		//return FALSE;
 	}
 	else
 		ProcessBuffer(nextXfer);
@@ -215,7 +215,8 @@ bool AudioDACTask::BeforeStartInternal()
 		debugPrintf("ASIOUAC: %s. Clear feedback statistics\n", TaskName());
 #endif
 	}
-	return m_device->UsbSetPipePolicy((UCHAR)m_pipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue);
+	return m_device->UsbSetPipePolicy((UCHAR)m_pipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue) &&
+		m_device->UsbSetPipePolicy((UCHAR)m_pipeId, RESET_PIPE_ON_RESUME, 1, &policyValue); //experimental
 }
 
 bool AudioDACTask::AfterStopInternal()
