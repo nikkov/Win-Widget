@@ -37,6 +37,7 @@ namespace WidgetControl
         private const int productid1   = 0x05dc;
         private const int productid2   = 0x03e8;
         private const int productid3   = 0x0007;
+        private const int productid4   = 0x03e9;
         private const int interfaceNumber = 0;
 
         LstK deviceList = null;
@@ -118,7 +119,7 @@ namespace WidgetControl
             {
                 if (
                     (deviceInfo.Common.Vid == vendorid1 || deviceInfo.Common.Vid == vendorid2) &&
-                    (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3)
+                    (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3 || deviceInfo.Common.Pid == productid4)
                     )
                 {
                     if (deviceInfo.Connected)
