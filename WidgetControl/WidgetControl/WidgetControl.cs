@@ -425,7 +425,7 @@ namespace WidgetControl
             new  FeatureDescriptor(6, "LcdType"),
             new  FeatureDescriptor(7, "LogType"),
             new  FeatureDescriptor(8, "FilterType"),
-            new  FeatureDescriptor(9, "LQuirkType"),
+            new  FeatureDescriptor(9, "QuirkType"),
         };
 
         static int GetFeatureIndex(string name)
@@ -439,6 +439,11 @@ namespace WidgetControl
         }
 
         private void comboBox6_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label10_Click(object sender, EventArgs e)
         {
 
         }

@@ -297,9 +297,10 @@
             this.label10.AutoSize = true;
             this.label10.Location = new System.Drawing.Point(145, 290);
             this.label10.Name = "label10";
-            this.label10.Size = new System.Drawing.Size(60, 13);
+            this.label10.Size = new System.Drawing.Size(37, 13);
             this.label10.TabIndex = 6;
-            this.label10.Text = "Linux Quirk";
+            this.label10.Text = "Quirks";
+            this.label10.Click += new System.EventHandler(this.label10_Click);
             // 
             // comboBox10
             // 
