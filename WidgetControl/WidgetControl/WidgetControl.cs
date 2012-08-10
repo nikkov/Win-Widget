@@ -119,7 +119,8 @@ namespace WidgetControl
             {
                 if (
                     (deviceInfo.Common.Vid == vendorid1 || deviceInfo.Common.Vid == vendorid2) &&
-                    (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3 || deviceInfo.Common.Pid == productid4)
+                    (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3 || deviceInfo.Common.Pid == productid4) &&
+                     deviceInfo.DeviceInterfaceGUID.ToUpper() == "{D49AB938-53BA-498A-A848-8E2780A4A75F}"
                     )
                 {
                     if (deviceInfo.Connected)
