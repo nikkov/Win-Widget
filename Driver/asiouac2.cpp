@@ -25,8 +25,9 @@
 
 
 #define DEFAULT_BLOCK_SIZE 32
+//#define DEFAULT_BLOCK_SIZE 128
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 void debugPrintf(const char *szFormat, ...)
 {
     char str[4096];
@@ -184,7 +185,7 @@ AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outp
 	//read position in buffer
 	currentOutBufferPosition = 0;
 	currentInBufferPosition = 0;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: AsioUAC2::AsioUAC2()\n");
 #endif
 }
@@ -192,6 +193,9 @@ AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outp
 //------------------------------------------------------------------------------------------
 AsioUAC2::~AsioUAC2 ()
 {
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::~AsioUAC2() begin\n");
+#endif
 	stop ();
 	outputClose ();
 	inputClose ();
@@ -202,7 +206,7 @@ AsioUAC2::~AsioUAC2 ()
 		CloseHandle(m_AsioSyncEvent);
 	if(m_BufferSwitchEvent)
 		CloseHandle(m_BufferSwitchEvent);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: AsioUAC2::~AsioUAC2()\n");
 #endif
 }
@@ -228,6 +232,9 @@ void AsioUAC2::getErrorMessage (char *string)
 //------------------------------------------------------------------------------------------
 ASIOBool AsioUAC2::init (void* sysRef)
 {
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::init...\n");
+#endif
 	m_device = new USBAudioDevice(true);
 	m_device->InitDevice();
 
@@ -240,14 +247,14 @@ ASIOBool AsioUAC2::init (void* sysRef)
 		}
 		else
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Output open error!!\n");
 #endif
 		}
 	}
 	else
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Input open error!!\n");
 #endif
 	}
@@ -267,19 +274,19 @@ ASIOBool AsioUAC2::init (void* sysRef)
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::start ()
 {
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Try start device...\n");
 #endif
 	if(started)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Can't start device: already started!\n");
 #endif
 		return ASE_OK; //ASE_InvalidMode;
 	}
 	if(!m_device)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Can't start device: m_device==NULL!\n");
 #endif
 		return ASE_HWMalfunction;
@@ -301,13 +308,13 @@ ASIOError AsioUAC2::start ()
 #else
 		// activate hardware
 		m_StopInProgress = false;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Exit flag cleared\n");
 #endif
 		ASIOError retVal = m_device->Start() ? ASE_OK : ASE_HWMalfunction;
 		if(retVal == ASE_OK)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Device started successfully!\n");
 #endif
 			m_device->SetNotifyCallback(AsioUAC2::sDeviceNotify, this);
@@ -317,7 +324,7 @@ ASIOError AsioUAC2::start ()
 		return retVal;
 #endif
 	}
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Can't start device: callbacks is NULL!\n");
 #endif
 	return ASE_NotPresent;
@@ -326,19 +333,19 @@ ASIOError AsioUAC2::start ()
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::stop ()
 {
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Try stop device...\n");
 #endif
 	if(!started)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Can't stop device: already stoped!\n");
 #endif
 		return ASE_OK;//ASE_InvalidMode;
 	}
 	if(!m_device)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Can't stop device: m_device==NULL!\n");
 #endif
 		return ASE_HWMalfunction;
@@ -351,7 +358,7 @@ ASIOError AsioUAC2::stop ()
 #else
 	// de-activate hardware
 	m_StopInProgress = true;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Exit flag is set\n");
 #endif
 	if(m_AsioSyncEvent)
@@ -364,7 +371,7 @@ ASIOError AsioUAC2::stop ()
 	if(retVal == ASE_OK)
 	{
 		m_device->SetNotifyCallback(NULL, this);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Device stoped successfully!\n");
 #endif
 		started = false;
@@ -378,7 +385,7 @@ ASIOError AsioUAC2::getChannels (long *numInputChannels, long *numOutputChannels
 {
 	*numInputChannels = m_NumInputs;
 	*numOutputChannels = m_NumOutputs;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: getChannels request. Number inputs = %d, number outputs = %d\n", m_NumInputs, m_NumOutputs);
 #endif
 	return ASE_OK;
@@ -389,7 +396,7 @@ ASIOError AsioUAC2::getLatencies (long *_inputLatency, long *_outputLatency)
 {
 	*_inputLatency = inputLatency;
 	*_outputLatency = outputLatency;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: getLatencies request. Input Latency = %d, Output Latency = %d\n", inputLatency, outputLatency);
 #endif
 	return ASE_OK;
@@ -401,7 +408,7 @@ ASIOError AsioUAC2::getBufferSize (long *minSize, long *maxSize,
 {
 	*minSize = *maxSize = *preferredSize = blockFrames;		// allow this size only
 	*granularity = 0;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: getBufferSize request. MaxSize=maxSize=preferredSize=%d\n", blockFrames);
 #endif
 	return ASE_OK;
@@ -415,12 +422,12 @@ ASIOError AsioUAC2::canSampleRate (ASIOSampleRate sampleRate)
 	int iSampleRate = (int)sampleRate;
 	if(m_device->CanSampleRate(iSampleRate))
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: canSampleRate request for samplerate %d OK\n", iSampleRate);
 #endif
 		return ASE_OK;
 	}
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: canSampleRate request for samplerate %d error!\n", iSampleRate);
 #endif
 	return ASE_NoClock;
@@ -430,7 +437,7 @@ ASIOError AsioUAC2::canSampleRate (ASIOSampleRate sampleRate)
 ASIOError AsioUAC2::getSampleRate (ASIOSampleRate *sampleRate)
 {
 	*sampleRate = this->sampleRate;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: getSampleRate request. Current samplerate %d\n", (int)*sampleRate);
 #endif
 	return ASE_OK;
@@ -442,11 +449,11 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 	if(!m_device)
 		return ASE_HWMalfunction;
 	int iSampleRate = (int)sampleRate;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Try change samplerate to %d\n", iSampleRate);
 #endif
 
-	if (sampleRate != this->sampleRate)
+	//if (sampleRate != this->sampleRate)
 	{
 		if(m_device->SetSampleRate(iSampleRate))
 		{
@@ -457,13 +464,13 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 			if (callbacks && callbacks->sampleRateDidChange)
 				callbacks->sampleRateDidChange (this->sampleRate);
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Samplerate changed to %d\n", (int)this->sampleRate);
 #endif
 		}
 		else
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Samplerate not changed to %d\n", iSampleRate);
 #endif
 			return ASE_NoClock;
@@ -483,7 +490,7 @@ ASIOError AsioUAC2::getClockSources (ASIOClockSource *clocks, long *numSources)
 	clocks->isCurrentSource = ASIOTrue;
 	strcpy(clocks->name, "Internal");
 	*numSources = 1;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Get clock source req\n");
 #endif
 	return ASE_OK;
@@ -492,7 +499,7 @@ ASIOError AsioUAC2::getClockSources (ASIOClockSource *clocks, long *numSources)
 //------------------------------------------------------------------------------------------
 ASIOError AsioUAC2::setClockSource (long index)
 {
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Set clock source by index %d\n", (int)index);
 #endif
 	if (!index)
@@ -519,7 +526,7 @@ ASIOError AsioUAC2::getSamplePosition (ASIOSamples *sPos, ASIOTimeStamp *tStamp)
 		sPos->lo = (unsigned long)samplePosition;
 	}
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	//debugPrintf("ASIOUAC: Retrieve sample position %d", (int)samplePosition);
 #endif
 	return ASE_OK;
@@ -552,7 +559,7 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 				info->type = ASIOSTInt32LSB;
 			}
 	}
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: getChannelInfo request. Channel %d, type %d, slot size %d\n", info->channel, info->type, slotSize);
 #endif
 
@@ -606,7 +613,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 			inMap[activeInputs] = info->channelNum;
 			inputBuffers[activeInputs] = new char[m_inputSampleSize * blockFrames * 2];	// double buffer
 			memset(inputBuffers[activeInputs], 0, blockFrames * 2 * m_inputSampleSize);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Buffer for input channel %d allocated with size %d\n", activeInputs, (int)blockFrames * 2 * m_inputSampleSize);
 #endif
 			if (inputBuffers[activeInputs])
@@ -630,7 +637,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 			outMap[activeOutputs] = info->channelNum;
 			outputBuffers[activeOutputs] = new char[m_outputSampleSize * blockFrames * 2];	// double buffer
 			memset(outputBuffers[activeOutputs], 0, blockFrames * 2 * m_outputSampleSize);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Buffer for output channel %d allocated with size %d\n", activeOutputs, (int)blockFrames * 2 * m_outputSampleSize);
 #endif
 			if (outputBuffers[activeOutputs])
@@ -675,7 +682,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 	else
 		timeInfoMode = false;
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Create buffers with length %d OK\n", blockFrames);
 #endif
 
@@ -685,7 +692,7 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 
 error:
 	disposeBuffers();
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Create buffers with length %d failed!\n", blockFrames);
 #endif
 	return ASE_InvalidParameter;
@@ -696,6 +703,9 @@ ASIOError AsioUAC2::disposeBuffers()
 {
 	long i;
 	
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::disposeBuffers() begin\n");
+#endif
 	callbacks = 0;
 	stop();
 #ifndef NO_INPUTS
@@ -862,7 +872,7 @@ void AsioUAC2::bufferSwitch ()
 		else
 			callbacks->bufferSwitch (toggle, ASIOFalse);
 		toggle = toggle ? 0 : 1;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		//debugPrintf("ASIOUAC: Buffer switched to %d, samplePosition %d, blockFrames %d", toggle, (int)samplePosition, blockFrames);
 #endif
 	}
@@ -893,8 +903,8 @@ ASIOError AsioUAC2::outputReady ()
 
 void AsioUAC2::DeviceNotify(int reason)
 {
-#ifdef _DEBUG
-	debugPrintf("ASIOUAC: Device notification reason: %d\n", reason);
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: Device notification reason: %d, callback enabled=%d\n", reason, (int)callbacks != NULL);
 #endif
 	if(callbacks)
 		callbacks->asioMessage(kAsioResetRequest, 0, NULL, NULL);
@@ -955,10 +965,16 @@ struct AudioSample4
 template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *buffer, int& len)
 {
 	if(activeOutputs == 0 || m_StopInProgress)
+	{
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: Detected exit flag in output thread!\n");
+#endif
+		len = 0;
 		return;
+	}
 	T_DST *sampleBuff = (T_DST *)buffer;
 	int sampleLength = len / sizeof(T_DST);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	//debugPrintf("ASIOUAC: Fill output data with length %d, currentBufferPosition %d", sampleLength, currentOutBufferPosition);
 #endif
 
@@ -969,7 +985,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 	{
 		if(m_StopInProgress)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Detected exit flag in output thread!\n");
 #endif
 			return;
@@ -987,7 +1003,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 			{
 				if(WaitForSingleObject(m_AsioSyncEvent, 100) == WAIT_TIMEOUT)
 				{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 					debugPrintf("ASIOUAC: Waiting input buffer error!\n");
 #endif
 					break;
@@ -995,7 +1011,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 			}
 			if(m_StopInProgress)
 			{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 				debugPrintf("ASIOUAC: Detected exit flag in output thread!\n");
 #endif
 				return;
@@ -1010,10 +1026,16 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillOutputData(UCHAR *b
 template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *buffer, int& len)
 {
 	if(activeInputs == 0 || m_StopInProgress)
+	{
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: Detected exit disposed flag in input thread!\n");
+#endif
+		len = 0;
 		return;
+	}
 	T_SRC *sampleBuff = (T_SRC *)buffer;
 	int sampleLength = len / sizeof(T_SRC);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	//debugPrintf("ASIOUAC: Fill input data with length %d, currentBufferPosition %d", sampleLength, currentInBufferPosition);
 #endif
 
@@ -1024,7 +1046,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 	{
 		if(m_StopInProgress)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: Detected exit flag in input thread!\n");
 #endif
 		}
@@ -1043,14 +1065,14 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 				//waiting switch
 				if(WaitForSingleObject(m_BufferSwitchEvent, 100) == WAIT_TIMEOUT)
 				{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 					debugPrintf("ASIOUAC: Waiting buffer switch error!\n");
 #endif
 					break;
 				}
 				if(m_StopInProgress)
 				{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 					debugPrintf("ASIOUAC: Detected exit flag in input thread!\n");
 #endif
 					return;
@@ -1060,7 +1082,7 @@ template <typename T_SRC, typename T_DST> void AsioUAC2::FillInputData(UCHAR *bu
 			{
 				if(m_StopInProgress)
 				{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 					debugPrintf("ASIOUAC: Detected exit flag in input thread!\n");
 #endif
 					return;

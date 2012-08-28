@@ -20,7 +20,7 @@
 #include <tchar.h>
 #include <math.h>
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 extern void debugPrintf(const _TCHAR *szFormat, ...);
 #endif
 
@@ -58,7 +58,7 @@ public:
 		m_guard.Enter();
 		float newValue = (float)feedbackValue / 16384.0f;
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		//if(newValue > 0.f && fabs(newValue - cur_value) / newValue > 0.000001)
 		if((int)(100*newValue) != (int)(100*cur_value))
 			debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
@@ -144,7 +144,7 @@ template <class TaskClass> class BaseThread
 	void ThreadFunc()
 	{
 		bool retVal = TRUE;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Thread started!\n", m_Task.TaskName());
 #endif
 		while (m_taskState != TaskThread::TaskExit)
@@ -165,7 +165,7 @@ template <class TaskClass> class BaseThread
 				//todo
 			}
 		}
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Thread exited!\n", m_Task.TaskName());
 #endif
 		ExitThread(0);
@@ -177,7 +177,7 @@ protected:
 public:
 	BaseThread(int nPriority = THREAD_PRIORITY_TIME_CRITICAL) : m_Task(), m_taskState(TaskThread::TaskCreated), m_Thread(INVALID_HANDLE_VALUE)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Thread constructor\n", m_Task.TaskName());
 #endif
 		m_Thread = CreateThread(NULL, 0, LPTHREAD_START_ROUTINE(sThreadFunc), this, CREATE_SUSPENDED, &m_ThreadID);
@@ -200,7 +200,7 @@ public:
 				TerminateThread(m_Thread, -1);
 			if (m_Thread != INVALID_HANDLE_VALUE)
 				CloseHandle(m_Thread);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Thread destructor\n", m_Task.TaskName());
 #endif
 		}
@@ -208,19 +208,19 @@ public:
 
 	bool Start()
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Try start...\n", m_Task.TaskName());
 #endif
 		if(m_Thread == INVALID_HANDLE_VALUE)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Can't start thread. Invalid handle\n", m_Task.TaskName());
 #endif
 			return FALSE;
 		}
 		if(m_taskState == TaskThread::TaskStarted)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Can't start thread. Already started\n", m_Task.TaskName());
 #endif
 			return TRUE;
@@ -233,7 +233,7 @@ public:
 		m_taskState = TaskThread::TaskStarted;
 
 		retVal = (ResumeThread(m_Thread) != -1);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Start is OK\n", m_Task.TaskName());
 #endif
 		return retVal;
@@ -241,12 +241,12 @@ public:
 	
 	bool Stop()
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Try stop...\n", m_Task.TaskName());
 #endif
 		if(m_Thread == INVALID_HANDLE_VALUE)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Can't stop thread. Invalid handle\n", m_Task.TaskName());
 #endif
 			return FALSE;
@@ -254,7 +254,7 @@ public:
 
 		if(m_taskState == TaskThread::TaskStopped)
 		{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Can't stop thread. Already stopped\n", m_Task.TaskName());
 #endif
 			return TRUE;
@@ -270,7 +270,7 @@ public:
 
 		m_Task.AfterStop();
 		m_inWork.Leave();
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s.Stop is OK\n", m_Task.TaskName());
 #endif
 		return retVal;
@@ -323,6 +323,7 @@ class AudioTask : public TaskThread
 
 
 	_TCHAR				m_taskName[64];
+	int					m_isoTransferErrorCount;
 protected:
 	USBAudioDevice*		m_device;
 
@@ -370,7 +371,8 @@ public:
 		m_isStarted(FALSE),
 		m_sampleFreq(0),
 		m_sampleSize(4), //default sample size in bytes
-		m_channelNumber(2)
+		m_channelNumber(2),
+		m_isoTransferErrorCount(0)
 	{
 		memset(m_isoBuffers, 0, sizeof(m_isoBuffers));
 		_tcscpy_s(m_taskName, taskName);
@@ -398,6 +400,10 @@ public:
 		m_interval = interval;
 		m_channelNumber = channelNumber;
 		m_sampleSize = sampleSize;
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: %s. AudioTask::Init(MaxPacketSize=%d, Interval=%d, ChannelNum=%d, SampleSize=%d)\n", 
+			TaskName(), (int)maximumPacketSize, (int)m_interval, (int)m_channelNumber, (int)m_sampleSize);
+#endif
 	}
 
 	void SetSampleFreq(int freq)
@@ -497,7 +503,7 @@ public:
 
 class AudioFeedbackTask : public AudioTask
 {
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	int				m_lastFeedbackValue;
 #endif
 	FeedbackInfo*	m_feedbackInfo;
@@ -523,7 +529,7 @@ protected:
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
 	AudioFeedbackTask() : AudioTask(16, "Audio feedback task"), m_feedbackInfo(NULL)
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		, m_lastFeedbackValue(0)
 #endif
 	{}

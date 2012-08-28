@@ -19,19 +19,22 @@
 
 #define NEXT_INDEX(x)		((x + 1) % (sizeof(m_isoBuffers) / sizeof(ISOBuffer)))
 
+#define MAX_OVL_ERROR_COUNT	3
+#define OVL_WAIT_TIMEOUT	100
+
 
 bool AudioTask::BeforeStart()
 {
 	if(m_DataBufferSize == 0 || m_packetPerTransfer == 0 || m_packetSize == 0)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Can't start AudioTask thread: unknown sample freq\n", TaskName());
 #endif
 		return FALSE;
 	}
 	if(!m_isoBuffers[0].DataBuffer)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Can't start AudioTask thread: buffers not allocated\n", TaskName());
 #endif
 		return FALSE;
@@ -41,11 +44,12 @@ bool AudioTask::BeforeStart()
 	m_CompletedCount = 0;
 	m_FrameNumber = 0;
 	m_LastStartFrame = 0;
+	m_isoTransferErrorCount = 0;
 
 	bool r = m_device->OvlInit(&m_OvlPool, MAX_OUTSTANDING_TRANSFERS);
 	if(!r)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Can't start AudioTask thread: OvlK_Init failed\n", TaskName());
 #endif
 		return FALSE;
@@ -68,7 +72,7 @@ bool AudioTask::BeforeStart()
 
 	BeforeStartInternal();
 	m_isStarted = TRUE;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: %s. Before start thread is OK\n", TaskName());
 #endif
 	return TRUE;
@@ -86,7 +90,7 @@ bool AudioTask::AfterStop()
 	m_completedIndex;
 
     //  Cancel all transfers left outstanding.
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: %s. Cancel outstanding transfers\n", TaskName());
 #endif
     while(m_completedIndex != m_outstandingIndex)
@@ -107,7 +111,7 @@ bool AudioTask::AfterStop()
     OvlK_Free(m_OvlPool);
 	m_isStarted = FALSE;
 	AfterStopInternal();
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: %s. After stop thread is OK\n", TaskName());
 #endif
 	return TRUE;
@@ -127,7 +131,7 @@ bool AudioTask::FreeBuffers()
 		}
 	m_outstandingIndex = 0;
 	m_completedIndex = 0;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: %s. Free buffers is OK\n", TaskName());
 #endif
 	return TRUE;
@@ -137,7 +141,7 @@ bool AudioTask::AllocBuffers()
 {
 	if(m_packetPerTransfer == 0 || m_packetSize == 0)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Can't start AllocBuffers: unknown sample freq\n", TaskName());
 #endif
 		return FALSE;
@@ -154,7 +158,7 @@ bool AudioTask::AllocBuffers()
         IsoK_SetPackets(bufferEL->IsoContext, m_packetSize);
     }
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. AllocBuffers OK\n", TaskName());
 #endif
 		return TRUE;
@@ -181,22 +185,36 @@ bool AudioTask::Work(volatile TaskState& taskState)
 	nextXfer = m_isoBuffers + m_completedIndex;
 	if (!nextXfer || taskState != TaskStarted) 
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. No more packets!\n", TaskName());
 #endif
 		return TRUE;
 	}
-	if(!m_device->OvlWait(nextXfer->OvlHandle, 100, KOVL_WAIT_FLAG_NONE, &transferred))
+	if(!m_device->OvlWait(nextXfer->OvlHandle, OVL_WAIT_TIMEOUT, KOVL_WAIT_FLAG_NONE, &transferred))
+//	if(!m_device->OvlWaitOrCancel(nextXfer->OvlHandle, OVL_WAIT_TIMEOUT, &transferred))
 	{
-#ifdef _DEBUG
-		debugPrintf("ASIOUAC: %s OvlK_Wait failed. ErrorCode: %08Xh\n", TaskName(),  GetLastError());
+		int deviceErrorCode = m_device->GetErrorCode();
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: %s OvlK_Wait failed. ErrorCode: %08Xh\n", TaskName(), deviceErrorCode);
 #endif
-		m_device->ClearErrorCode();
-		//m_device->Notify(0);
-		//return FALSE;
+		m_isoTransferErrorCount++;
+		if(//deviceErrorCode == ERROR_GEN_FAILURE ||
+			m_isoTransferErrorCount >= MAX_OVL_ERROR_COUNT)
+		{
+#ifdef _ENABLE_TRACE
+			debugPrintf("ASIOUAC: Notify to device about error\n"); //report to device error
+#endif
+			m_device->Notify(0);
+			return FALSE;
+		}
+		else
+			m_device->ClearErrorCode();
 	}
 	else
+	{
 		ProcessBuffer(nextXfer);
+		m_isoTransferErrorCount = 0; //reset error count
+	}
 	IsoXferComplete(nextXfer, transferred);
 	m_completedIndex = NEXT_INDEX(m_completedIndex);
 	m_buffersGuard.Leave();
@@ -211,7 +229,7 @@ bool AudioDACTask::BeforeStartInternal()
 	if(m_feedbackInfo)
 	{
 		m_feedbackInfo->ClearStatistics();
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Clear feedback statistics\n", TaskName());
 #endif
 	}
@@ -221,7 +239,7 @@ bool AudioDACTask::BeforeStartInternal()
 
 bool AudioDACTask::AfterStopInternal()
 {
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	if(m_feedbackInfo)
 		debugPrintf("ASIOUAC: %s. Maximum feedback value (%f), minimum feedback value (%f)\n", TaskName(),  m_feedbackInfo->GetMaxValue(), m_feedbackInfo->GetMinValue());
 #endif
@@ -236,7 +254,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 	int maxSamplesInPacket = m_packetSize / m_channelNumber / m_sampleSize * 8 / (1 << (m_interval - 1)); //max stereo samples in one packet
 	if(raw_cur_feedback > (float)(maxSamplesInPacket))
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Feedback value (%f) larger than the maximum packet size\n", TaskName(), raw_cur_feedback);
 #endif
 		raw_cur_feedback = (float)maxSamplesInPacket;
@@ -244,6 +262,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 	int dataLength = 0;
 	if(raw_cur_feedback > 0)
 	{
+		//raw_cur_feedback = m_defaultPacketSize;
 		//in one second we have 8 / (1 << (m_interval - 1)) packets
 		//one packet must contain samples number = [cur_feedback * (1 << (m_interval - 1)) / 8]
 		float cur_feedback = (raw_cur_feedback * (1 << (m_interval - 1))) / 8; //number stereo samples in one packet
@@ -270,7 +289,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 
 		if(m_readDataCb)
 			m_readDataCb(m_readDataCbContext, nextXfer->DataBuffer, dataLength);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		//debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), raw_cur_feedback, (float)dataLength/8.f, dataLength);
 #endif
 	}
@@ -287,7 +306,7 @@ bool AudioDACTask::RWBuffer(ISOBuffer* nextXfer, int len)
 {
 	if(!m_device->UsbIsoWritePipe(m_pipeId, nextXfer->DataBuffer, len, (LPOVERLAPPED)nextXfer->OvlHandle, nextXfer->IsoContext))
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. IsoWritePipe failed. ErrorCode: %08Xh\n", TaskName(),  m_device->GetErrorCode());
 #endif
 		return FALSE;
@@ -325,7 +344,7 @@ bool AudioADCTask::RWBuffer(ISOBuffer* nextXfer, int len)
 {
 	if(!m_device->UsbIsoReadPipe(m_pipeId, nextXfer->DataBuffer, len, (LPOVERLAPPED)nextXfer->OvlHandle, nextXfer->IsoContext))
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. IsoReadPipe (ADC) failed. ErrorCode: %08Xh\n", TaskName(), m_device->GetErrorCode());
 #endif
 		return FALSE;
@@ -374,7 +393,7 @@ bool AudioFeedbackTask::RWBuffer(ISOBuffer* nextXfer, int len)
 {
 	if(!m_device->UsbIsoReadPipe(m_pipeId, nextXfer->DataBuffer, len, (LPOVERLAPPED)nextXfer->OvlHandle, nextXfer->IsoContext))
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. IsoReadPipe (feedback) failed. ErrorCode: %08Xh\n", TaskName(), m_device->GetErrorCode());
 #endif
 		return FALSE;

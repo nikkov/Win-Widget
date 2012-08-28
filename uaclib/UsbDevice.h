@@ -24,7 +24,7 @@
 #include <libusbk.h>
 #include "usb_audio.h"
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 extern void debugPrintf(const _TCHAR *szFormat, ...);
 #endif
 
@@ -52,6 +52,8 @@ class USBDevice
 	//
 	KUSB_HANDLE						m_usbDeviceHandle;
 
+	KLST_DEVINFO_HANDLE				m_deviceInfo;
+
 
 	//device speed LowSpeed=0x01, FullSpeed=0x02, HighSpeed=0x03
 	int								m_deviceSpeed;
@@ -61,6 +63,8 @@ class USBDevice
 	KUSB_HANDLE FindDevice();
 	bool ParseDescriptors(BYTE *configDescr, DWORD length);
 	void InitDescriptors();
+
+	bool							m_deviceIsConnected;
 protected:
 	DWORD							m_errorCode;
 
@@ -71,6 +75,25 @@ protected:
 
 	virtual bool ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor) = 0;
 
+	bool IsConnected() { return m_deviceInfo != NULL && m_deviceIsConnected; }
+
+	void CheckError(int currentError)
+	{
+		if(currentError != ERROR_IO_PENDING)
+		{
+#ifdef _ENABLE_TRACE
+	        debugPrintf("ASIOUAC: Found critical error with ErrorCode: %08Xh\n",  currentError);
+#endif
+			m_deviceIsConnected = FALSE;
+		}
+	}
+
+	int GetLastErrorInternal()
+	{
+		int lastError = GetLastError();
+		CheckError(lastError);
+		return lastError;
+	}
 public:
 	USBDevice();
 	virtual ~USBDevice();
@@ -92,8 +115,8 @@ public:
 	{
 		if(OvlK_Init(PoolHandle, m_usbDeviceHandle, MaxOverlappedCount, KOVL_POOL_FLAG_NONE))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: OvlK_Init failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -103,8 +126,8 @@ public:
 	{
 		if(OvlK_Acquire(OverlappedK, PoolHandle))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: OvlK_Acquire failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -114,8 +137,8 @@ public:
 	{
 		if(OvlK_Wait(OverlappedK, TimeoutMS, WaitFlags, TransferredLength))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: OvlK_Wait failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -127,8 +150,8 @@ public:
 			return TRUE;
 		if(TimeoutMS != 0) // we are just cancel request, no errors report
 		{
-			m_errorCode = GetLastError();
-#ifdef _DEBUG
+			m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: OvlK_WaitOrCancel failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		}
@@ -139,8 +162,8 @@ public:
 	{
 		if(OvlK_Release(OverlappedK))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: OvlK_Release failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -150,8 +173,8 @@ public:
 	{
 		if(OvlK_ReUse(OverlappedK))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: OvlK_ReUse failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -162,8 +185,8 @@ public:
 	{
 		if(UsbK_ResetPipe(m_usbDeviceHandle, PipeId))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_ResetPipe failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -173,8 +196,8 @@ public:
 	{
 		if(UsbK_AbortPipe(m_usbDeviceHandle, PipeId))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_AbortPipe failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -184,10 +207,10 @@ public:
 	{
 		DWORD lastError;
 		if(UsbK_IsoWritePipe (m_usbDeviceHandle, PipeID, Buffer, BufferLength, Overlapped, IsoContext) || 
-			ERROR_IO_PENDING == (lastError = GetLastError()))
+			ERROR_IO_PENDING == (lastError = GetLastErrorInternal()))
 			return TRUE;
 		m_errorCode = lastError;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_IsoWritePipe failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -197,10 +220,10 @@ public:
 	{
 		DWORD lastError;
 		if(UsbK_IsoReadPipe (m_usbDeviceHandle, PipeID, Buffer, BufferLength, Overlapped, IsoContext) || 
-			ERROR_IO_PENDING == (lastError = GetLastError()))
+			ERROR_IO_PENDING == (lastError = GetLastErrorInternal()))
 			return TRUE;
 		m_errorCode = lastError;
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_IsoReadPipe failed. ErrorCode: %08Xh\n", m_errorCode);
 #endif
 		return FALSE;
@@ -218,8 +241,8 @@ public:
 	{
 		if(UsbK_ClaimInterface (m_usbDeviceHandle, Number, FALSE))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_ClaimInterface %d failed. ErrorCode: %08Xh\n", Number, m_errorCode);
 #endif
 		return FALSE;
@@ -229,8 +252,8 @@ public:
 	{
 		if(UsbK_SetAltInterface(m_usbDeviceHandle, Number, FALSE, AltSettingNumber))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_SetAltInterface %d (alt %d) failed. ErrorCode: %08Xh\n", Number, AltSettingNumber, m_errorCode);
 #endif
 		return FALSE;
@@ -240,8 +263,8 @@ public:
 	{
 		if(UsbK_ReleaseInterface (m_usbDeviceHandle, Number, FALSE))
 			return TRUE;
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: UsbK_ReleaseInterface %d failed. ErrorCode: %08Xh\n", Number, m_errorCode);
 #endif
 		return FALSE;

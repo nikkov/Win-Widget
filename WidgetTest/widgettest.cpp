@@ -22,7 +22,7 @@
 #include "USBAudioDevice.h"
 #include "tlist.h"
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 
 void debugPrintf(const char *szFormat, ...)
 {
@@ -33,7 +33,7 @@ void debugPrintf(const char *szFormat, ...)
     va_end(argptr);
 
     printf(str);
-    //OutputDebugString(str);
+    OutputDebugString(str);
 }
 #endif
 

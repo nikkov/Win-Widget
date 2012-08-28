@@ -42,10 +42,10 @@ int deviceIDNum = sizeof(deviceID)/sizeof(DeviceID);
 
 #define _DeviceInterfaceGUID "{09e4c63c-ce0f-168c-1862-06410a764a35}"
 
-USBDevice::USBDevice() : m_usbDeviceHandle(NULL), m_errorCode(ERROR_SUCCESS), m_deviceSpeed(HighSpeed), m_deviceMutex(NULL)
+USBDevice::USBDevice() : m_usbDeviceHandle(NULL), m_deviceInfo(NULL), m_errorCode(ERROR_SUCCESS), m_deviceSpeed(HighSpeed), m_deviceMutex(NULL), m_deviceIsConnected(FALSE)
 {
 	InitDescriptors();
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: USBDevice()\n");
 #endif
 }
@@ -53,7 +53,7 @@ USBDevice::USBDevice() : m_usbDeviceHandle(NULL), m_errorCode(ERROR_SUCCESS), m_
 USBDevice::~USBDevice()
 {
 	FreeDevice();
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: ~USBDevice()\n");
 #endif
 	if(m_deviceMutex)
@@ -116,8 +116,8 @@ bool USBDevice::SendUsbControl(int dir, int type, int recipient, int request, in
 	*lengthTransferred = 0;
 	if(UsbK_ControlTransfer(m_usbDeviceHandle, packet, buff, size, lengthTransferred, NULL))
 		return TRUE;
-	m_errorCode = GetLastError();
-#ifdef _DEBUG
+	m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: UsbK_ControlTransfer failed. ErrorCode: %08Xh\n",  m_errorCode);
 #endif
 	return FALSE;
@@ -128,7 +128,7 @@ KUSB_HANDLE USBDevice::FindDevice()
 	KLST_HANDLE DeviceList = NULL;
 	KUSB_HANDLE handle = NULL;
 
-	KLST_DEVINFO_HANDLE DeviceInfo = NULL;
+	m_deviceInfo = NULL;
 	KLST_DEVINFO_HANDLE tmpDeviceInfo = NULL;
 
 	ULONG deviceCount = 0;
@@ -137,7 +137,7 @@ KUSB_HANDLE USBDevice::FindDevice()
 	// Get the device list
 	if (!LstK_Init(&DeviceList, KLST_FLAG_NONE))
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Error initializing device list.\n");
 #endif
 		return NULL;
@@ -146,7 +146,7 @@ KUSB_HANDLE USBDevice::FindDevice()
 	LstK_Count(DeviceList, &deviceCount);
 	if (!deviceCount)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: No devices in device list.\n");
 #endif
 		SetLastError(ERROR_DEVICE_NOT_CONNECTED);
@@ -155,7 +155,7 @@ KUSB_HANDLE USBDevice::FindDevice()
 		return NULL;
 	}
 
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Looking for device with DeviceInterfaceGUID %s\n", _T(_DeviceInterfaceGUID));
 #endif
 	LstK_MoveReset(DeviceList);
@@ -164,18 +164,18 @@ KUSB_HANDLE USBDevice::FindDevice()
     // Call LstK_MoveNext after a LstK_MoveReset to advance to the first
     // element.
     while(LstK_MoveNext(DeviceList, &tmpDeviceInfo)
-		&& DeviceInfo == NULL)
+		&& m_deviceInfo == NULL)
     {
 		if(!_stricmp(tmpDeviceInfo->DeviceInterfaceGUID, _DeviceInterfaceGUID) && tmpDeviceInfo->Connected)
 		{
-			DeviceInfo = tmpDeviceInfo;
+			m_deviceInfo = tmpDeviceInfo;
 			break;
 		}
     }
 
-	if (!DeviceInfo)
+	if (!m_deviceInfo)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Device not found.\n");
 #endif
 		// If LstK_Init returns TRUE, the list must be freed.
@@ -184,14 +184,16 @@ KUSB_HANDLE USBDevice::FindDevice()
 	}
 
     // Initialize the device with the "dynamic" Open function
-    if (!UsbK_Init(&handle, DeviceInfo))
+    if (!UsbK_Init(&handle, m_deviceInfo))
     {
+		m_deviceInfo = NULL;
 		handle = NULL;
-        m_errorCode = GetLastError();
-#ifdef _DEBUG
+        m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
         debugPrintf("ASIOUAC: UsbK_Init failed. ErrorCode: %08Xh\n",  m_errorCode);
 #endif
     }
+
 	LstK_Free(DeviceList);
 	return handle;
 }
@@ -202,9 +204,9 @@ bool USBDevice::InitDevice()
 	ULONG lengthTransferred;
 
 	m_deviceMutex = CreateMutex(NULL, FALSE, "Global\\ASIOUAC2");
-	if(GetLastError() == ERROR_ALREADY_EXISTS)
+	if(GetLastErrorInternal() == ERROR_ALREADY_EXISTS)
 	{
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Can't start device! Device already used!\n");
 #endif
 		if(m_deviceMutex)
@@ -226,8 +228,8 @@ bool USBDevice::InitDevice()
 	lengthTransferred = sizeof(configDescriptorBuffer);
 	if(!UsbK_QueryDeviceInformation( m_usbDeviceHandle, DEVICE_SPEED, &lengthTransferred, configDescriptorBuffer))
 	{
-		m_errorCode = GetLastError();
-#ifdef _DEBUG
+		m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
         debugPrintf("ASIOUAC: UsbK_QueryDeviceInformation failed. ErrorCode: %08Xh\n",  m_errorCode);
 #endif
 	    UsbK_Free(m_usbDeviceHandle);
@@ -235,7 +237,7 @@ bool USBDevice::InitDevice()
 		return FALSE;
 	}
 	m_deviceSpeed = (int)configDescriptorBuffer[0];
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	if(m_deviceSpeed == HighSpeed)
         debugPrintf("ASIOUAC: Device speed: high\n");
 	else
@@ -243,8 +245,8 @@ bool USBDevice::InitDevice()
 #endif
 	if(!UsbK_GetDescriptor(m_usbDeviceHandle, USB_DESCRIPTOR_TYPE_DEVICE, 0, 0, configDescriptorBuffer, sizeof(configDescriptorBuffer), &lengthTransferred))
 	{
-        m_errorCode = GetLastError();
-#ifdef _DEBUG
+        m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
         debugPrintf("ASIOUAC: Get device descriptor failed. ErrorCode: %08Xh\n",  m_errorCode);
 #endif
 	    UsbK_Free(m_usbDeviceHandle);
@@ -258,12 +260,13 @@ bool USBDevice::InitDevice()
 					configDescriptorBuffer, sizeof(configDescriptorBuffer), &lengthTransferred))
 	{
 		ParseDescriptors(configDescriptorBuffer, lengthTransferred);
+		m_deviceIsConnected = TRUE;
 		return m_usbDeviceHandle != NULL;
 	}
 	else
 	{
-        m_errorCode = GetLastError();
-#ifdef _DEBUG
+        m_errorCode = GetLastErrorInternal();
+#ifdef _ENABLE_TRACE
         debugPrintf("ASIOUAC: Get config descriptor failed. ErrorCode: %08Xh\n",  m_errorCode);
 #endif
 	    UsbK_Free(m_usbDeviceHandle);
