@@ -92,7 +92,7 @@ bool AudioTask::AfterStop()
     while(m_completedIndex != m_outstandingIndex)
     {
         ISOBuffer* nextBufferEL = m_isoBuffers + m_completedIndex;
-        ULONG transferred;
+        UINT transferred;
 		m_device->OvlWaitOrCancel(nextBufferEL->OvlHandle, 0, &transferred);
 		m_completedIndex = NEXT_INDEX(m_completedIndex);
     }
@@ -163,7 +163,7 @@ bool AudioTask::AllocBuffers()
 bool AudioTask::Work(volatile TaskState& taskState)
 {
 	ISOBuffer* nextXfer;
-	ULONG transferred;
+	UINT transferred;
 	int dataLength = 0;
 
 	m_buffersGuard.Enter();
