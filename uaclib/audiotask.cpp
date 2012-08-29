@@ -232,6 +232,8 @@ bool AudioDACTask::BeforeStartInternal()
 #ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Clear feedback statistics\n", TaskName());
 #endif
+//		m_feedbackInfo->SetValue(0);
+		m_feedbackInfo->SetDefaultValue(m_defaultPacketSize);
 	}
 	return m_device->UsbSetPipePolicy((UCHAR)m_pipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue) &&
 		m_device->UsbSetPipePolicy((UCHAR)m_pipeId, RESET_PIPE_ON_RESUME, 1, &policyValue); //experimental
@@ -248,10 +250,26 @@ bool AudioDACTask::AfterStopInternal()
 
 int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 {
+/*
+	float raw_cur_feedback = m_defaultPacketSize;
+	if(m_feedbackInfo != NULL)
+	{
+		float raw_cur_feedbackFromDevice = m_feedbackInfo->GetValue();
+		if(raw_cur_feedbackFromDevice == 0.f)
+		{
+			raw_cur_feedback = m_defaultPacketSize;
+			m_feedbackInfo->SetDefaultValue(m_defaultPacketSize);
+		}
+	}
+	else
+		raw_cur_feedback = m_defaultPacketSize;
+*/
+	
 	float raw_cur_feedback = m_feedbackInfo == NULL || m_feedbackInfo->GetValue() == 0.0f 
 						?  m_defaultPacketSize
 						:  m_feedbackInfo->GetValue(); //value in stereo samples in one second
-	int maxSamplesInPacket = m_packetSize / m_channelNumber / m_sampleSize * 8 / (1 << (m_interval - 1)); //max stereo samples in one packet
+
+	int maxSamplesInPacket = m_packetSize / m_channelNumber / m_sampleSize; //max stereo samples in one packet
 	if(raw_cur_feedback > (float)(maxSamplesInPacket))
 	{
 #ifdef _ENABLE_TRACE
@@ -265,7 +283,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 		//raw_cur_feedback = m_defaultPacketSize;
 		//in one second we have 8 / (1 << (m_interval - 1)) packets
 		//one packet must contain samples number = [cur_feedback * (1 << (m_interval - 1)) / 8]
-		float cur_feedback = (raw_cur_feedback * (1 << (m_interval - 1))) / 8; //number stereo samples in one packet
+		float cur_feedback = raw_cur_feedback; //number stereo samples in one packet
 		int icur_feedback = (int)cur_feedback;
 		int nextOffSet = 0;
 		float frac = cur_feedback - icur_feedback;
@@ -323,7 +341,8 @@ void AudioDACTask::ProcessBuffer(ISOBuffer* buffer)
 bool AudioADCTask::BeforeStartInternal()
 {
 	if(m_feedbackInfo != NULL)
-		m_feedbackInfo->SetValue(0);
+		//m_feedbackInfo->SetValue(0);
+		m_feedbackInfo->SetDefaultValue(m_defaultPacketSize);
 	//return TRUE;
 
 	UCHAR policyValue = 1;
@@ -376,10 +395,16 @@ void AudioADCTask::ProcessBuffer(ISOBuffer* buffer)
 #endif
 	if(m_feedbackInfo)
 	{
+/*
 		int div = buffer->IsoContext->NumberOfPackets * m_channelNumber * m_sampleSize * (1 << (m_interval - 1)) / 8;
 		int d1 = recLength / div;
 		int d2 = recLength % div;
 		m_feedbackInfo->SetValue((d1 << 14) + d2);
+*/
+		int div = buffer->IsoContext->NumberOfPackets * m_channelNumber * m_sampleSize;
+		int d1 = recLength / div;
+		int d2 = recLength % div;
+		m_feedbackInfo->SetValue((d1 << 16) + d2);
 	}
 }
 
@@ -417,8 +442,8 @@ void AudioFeedbackTask::ProcessBuffer(ISOBuffer* nextXfer)
 
 bool AudioFeedbackTask::BeforeStartInternal()
 {
-	if(m_feedbackInfo != NULL)
-		m_feedbackInfo->SetValue(0);
+	//if(m_feedbackInfo != NULL)
+	//	m_feedbackInfo->SetValue(0);
 	return TRUE;
 }
 

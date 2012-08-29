@@ -79,7 +79,7 @@ protected:
 
 	void CheckError(int currentError)
 	{
-		if(currentError != ERROR_IO_PENDING)
+		if(currentError != ERROR_IO_PENDING && currentError != ERROR_SUCCESS)
 		{
 #ifdef _ENABLE_TRACE
 	        debugPrintf("ASIOUAC: Found critical error with ErrorCode: %08Xh\n",  currentError);

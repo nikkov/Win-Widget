@@ -24,6 +24,12 @@
 extern void debugPrintf(const _TCHAR *szFormat, ...);
 #endif
 
+#define koeff_e	0.02f
+
+#define packetPerTransferDAC	8
+#define packetPerTransferADC	16
+#define packetPerTransferFb		8
+
 class USBAudioDevice;
 
 typedef void (*FillDataCallback)(void* context, UCHAR *buffer, int& len);
@@ -48,22 +54,36 @@ class FeedbackInfo
 
 	float max_value;
 	float min_value;
+	//float default_value;
 public:
 	FeedbackInfo()
 	{
 		cur_value = 0.f;
+		//default_value = 0.f;
+	}
+	void SetDefaultValue(float feedbackValue)
+	{
+		m_guard.Enter();
+		//default_value = feedbackValue;
+		cur_value = feedbackValue;
+		debugPrintf("ASIOUAC: Set default value: %f\n", feedbackValue);
+		m_guard.Leave();
 	}
 	void SetValue(int feedbackValue)
 	{
 		m_guard.Enter();
-		float newValue = (float)feedbackValue / 16384.0f;
+
+		float newValue = (float)feedbackValue / 65356.0f;
 
 #ifdef _ENABLE_TRACE
-		//if(newValue > 0.f && fabs(newValue - cur_value) / newValue > 0.000001)
-		if((int)(100*newValue) != (int)(100*cur_value))
-			debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
+//		if((int)(100*newValue) != (int)(100*cur_value))
+//			debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
 #endif
-		cur_value = newValue;
+		if(cur_value == 0.f || newValue == 0.0f)
+			cur_value = newValue;
+		else
+			cur_value = (1.f - koeff_e) * cur_value + koeff_e * newValue;
+
 		if(max_value == 0.f || max_value < cur_value)
 			max_value = cur_value;
 		if(min_value == 0.f || min_value > cur_value)
@@ -71,6 +91,51 @@ public:
 		m_guard.Leave();
 	}
 
+/*
+	void SetValue(int feedbackValue)
+	{
+		m_guard.Enter();
+		if(feedbackValue == 0.f)
+		{
+			default_value = 0.f;
+			cur_value = 0.f;
+			debugPrintf("ASIOUAC: Set zero default value\n");
+		}
+		else
+		{
+			if(default_value == 0.f)
+			{
+				cur_value = 0.f;
+				debugPrintf("ASIOUAC: Set current value: 0\n");
+			}
+			else
+			{
+				if(cur_value == 0.f)
+				{
+					cur_value = default_value;
+					debugPrintf("ASIOUAC: Set current value: %f\n", cur_value);
+				}
+
+				float newValue = (float)feedbackValue / 65356.0f;
+
+#ifdef _ENABLE_TRACE
+//				if((int)(100*newValue) != (int)(100*cur_value))
+//					debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
+#endif
+				if(cur_value == 0.f || newValue == 0.0f)
+					cur_value = newValue;
+				else
+					cur_value = (1.f - koeff_e) * cur_value + koeff_e * newValue;
+
+				if(max_value == 0.f || max_value < cur_value)
+					max_value = cur_value;
+				if(min_value == 0.f || min_value > cur_value)
+					min_value = cur_value;
+			}
+		}
+		m_guard.Leave();
+	}
+*/
 	float GetValue()
 	{
 		float retVal;
@@ -427,8 +492,9 @@ protected:
 	{
 		if(m_isStarted)
 			return FALSE;
-		m_packetSize = m_sampleSize * freq / 1000 / (1 << (m_interval - 1)) + m_channelNumber * m_sampleSize; //size in bytes
-		m_defaultPacketSize = (float)freq / 1000.f;	// size in stereo samples
+
+		m_defaultPacketSize = (float)freq / 8000.f * (1 << (m_interval - 1)); // size in stereo samples in microframe
+		m_packetSize = m_channelNumber * m_sampleSize * ((int)m_defaultPacketSize + 1); //size in bytes = (packetSize + 1 extra frame) * size of frame
 		if(BufferIsAllocated())
 			FreeBuffers();
 		AllocBuffers();
@@ -441,7 +507,7 @@ protected:
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
-	AudioDACTask() : AudioTask(16, "Audio DAC task"), m_feedbackInfo(NULL), m_readDataCb(NULL), m_readDataCbContext(NULL)
+	AudioDACTask() : AudioTask(packetPerTransferDAC, "Audio DAC task"), m_feedbackInfo(NULL), m_readDataCb(NULL), m_readDataCbContext(NULL)
 	{}
 
 	~AudioDACTask()
@@ -469,8 +535,10 @@ protected:
 	{
 		if(m_isStarted)
 			return FALSE;
-		m_packetSize = m_sampleSize * freq / 1000 / (1 << (m_interval - 1)) + m_channelNumber * m_sampleSize; //size in bytes
-		m_defaultPacketSize = (float)freq / 1000.f;	// size in stereo samples
+
+		m_defaultPacketSize = (float)freq / 8000.f * (1 << (m_interval - 1)); // size in stereo samples in microframe
+		m_packetSize = m_channelNumber * m_sampleSize * ((int)m_defaultPacketSize + 1); //size in bytes = (packetSize + 1 extra frame) * size of frame
+
 		if(BufferIsAllocated())
 			FreeBuffers();
 		AllocBuffers();
@@ -483,7 +551,7 @@ protected:
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
-	AudioADCTask() : AudioTask(16, "Audio ADC task"), m_feedbackInfo(NULL), m_writeDataCb(NULL), m_writeDataCbContext(NULL)
+	AudioADCTask() : AudioTask(packetPerTransferADC, "Audio ADC task"), m_feedbackInfo(NULL), m_writeDataCb(NULL), m_writeDataCbContext(NULL)
 	{}
 
 	~AudioADCTask()
@@ -528,7 +596,7 @@ protected:
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
-	AudioFeedbackTask() : AudioTask(16, "Audio feedback task"), m_feedbackInfo(NULL)
+	AudioFeedbackTask() : AudioTask(packetPerTransferFb, "Audio feedback task"), m_feedbackInfo(NULL)
 #ifdef _ENABLE_TRACE
 		, m_lastFeedbackValue(0)
 #endif
@@ -594,6 +662,7 @@ public:
 	void Init(USBAudioDevice* device, FeedbackInfo* fb, UCHAR pipeId, USHORT maximumPacketSize, UCHAR interval, UCHAR valueSize)
 	{
 		m_Task.Init(device, pipeId, maximumPacketSize, interval, 1, valueSize);
+		//WARNING! ADC & DAC endpoints must have the same values of the intervals for implicit feedback
 		m_Task.SetFeedbackInfo(fb);
 		m_Task.SetSampleFreq(48000); //set any sample rate only for allocate buffers
 	}
