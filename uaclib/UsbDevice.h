@@ -66,8 +66,10 @@ protected:
 
 	virtual void FreeDevice();
 
+//	bool SendUsbControl(int dir, int type, int recipient, int request, int value, int index,
+//				   unsigned char *buff, int size, ULONG *lengthTransferred);
 	bool SendUsbControl(int dir, int type, int recipient, int request, int value, int index,
-				   unsigned char *buff, int size, ULONG *lengthTransferred);
+				   unsigned char *buff, int size, UINT *lengthTransferred);
 
 	virtual bool ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor) = 0;
 
@@ -110,7 +112,8 @@ public:
 		return FALSE;
 	}
 
-	bool OvlWait(KOVL_HANDLE OverlappedK, LONG TimeoutMS, KOVL_WAIT_FLAG WaitFlags, PULONG TransferredLength)
+//	bool OvlWait(KOVL_HANDLE OverlappedK, LONG TimeoutMS, KOVL_WAIT_FLAG WaitFlags, PULONG TransferredLength)
+	bool OvlWait(KOVL_HANDLE OverlappedK, LONG TimeoutMS, KOVL_WAIT_FLAG WaitFlags, PUINT TransferredLength)
 	{
 		if(OvlK_Wait(OverlappedK, TimeoutMS, WaitFlags, TransferredLength))
 			return TRUE;
@@ -121,7 +124,8 @@ public:
 		return FALSE;
 	}
 
-    bool OvlWaitOrCancel(KOVL_HANDLE OverlappedK, LONG TimeoutMS, PULONG TransferredLength)
+//    bool OvlWaitOrCancel(KOVL_HANDLE OverlappedK, LONG TimeoutMS, PULONG TransferredLength)
+    bool OvlWaitOrCancel(KOVL_HANDLE OverlappedK, LONG TimeoutMS, PUINT TransferredLength)
 	{
 		if(OvlK_WaitOrCancel(OverlappedK, TimeoutMS, TransferredLength))
 			return TRUE;
