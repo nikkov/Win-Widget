@@ -66,7 +66,9 @@ public:
 		m_guard.Enter();
 		//default_value = feedbackValue;
 		cur_value = feedbackValue;
+#ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: Set default value: %f\n", feedbackValue);
+#endif
 		m_guard.Leave();
 	}
 	void SetValue(int feedbackValue)
