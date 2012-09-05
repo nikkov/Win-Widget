@@ -24,8 +24,8 @@
 #include "asiouac2.h"
 
 
-#define DEFAULT_BLOCK_SIZE 32
-//#define DEFAULT_BLOCK_SIZE 128
+//#define DEFAULT_BLOCK_SIZE 32
+#define DEFAULT_BLOCK_SIZE 128
 
 #ifdef _ENABLE_TRACE
 void debugPrintf(const char *szFormat, ...)
@@ -669,6 +669,9 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 	if (callbacks->asioMessage (kAsioSupportsTimeInfo, 0, 0, 0))
 	{
 		timeInfoMode = true;
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: timeInfoMode = true\n");
+#endif
 		asioTime.timeInfo.speed = 1.;
 		asioTime.timeInfo.systemTime.hi = asioTime.timeInfo.systemTime.lo = 0;
 		asioTime.timeInfo.samplePosition.hi = asioTime.timeInfo.samplePosition.lo = 0;
@@ -680,7 +683,12 @@ ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels
 		asioTime.timeCode.flags = kTcValid | kTcRunning ;
 	}
 	else
+	{
 		timeInfoMode = false;
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: timeInfoMode = false\n");
+#endif
+	}
 
 #ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Create buffers with length %d OK\n", blockFrames);
@@ -860,7 +868,7 @@ void AsioUAC2::output ()
 //---------------------------------------------------------------------------------------------
 void AsioUAC2::bufferSwitch ()
 {
-	if (started && callbacks)
+	if (started && callbacks && !m_StopInProgress)
 	{
 		getNanoSeconds(&theSystemTime);			// latch system time
 		input();
@@ -870,7 +878,9 @@ void AsioUAC2::bufferSwitch ()
 		if (timeInfoMode)
 			bufferSwitchX ();
 		else
-			callbacks->bufferSwitch (toggle, ASIOFalse);
+			//callbacks->bufferSwitch (toggle, ASIOFalse);
+			callbacks->bufferSwitch (toggle, ASIOTrue);
+
 		toggle = toggle ? 0 : 1;
 #ifdef _ENABLE_TRACE
 		//debugPrintf("ASIOUAC: Buffer switched to %d, samplePosition %d, blockFrames %d", toggle, (int)samplePosition, blockFrames);

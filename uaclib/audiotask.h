@@ -24,9 +24,7 @@
 extern void debugPrintf(const _TCHAR *szFormat, ...);
 #endif
 
-#define koeff_e	0.02f
-
-#define packetPerTransferDAC	8
+#define packetPerTransferDAC	16
 #define packetPerTransferADC	16
 #define packetPerTransferFb		8
 
@@ -54,20 +52,32 @@ class FeedbackInfo
 
 	float max_value;
 	float min_value;
-	//float default_value;
+#ifdef _ENABLE_TRACE
+	float last_value;
+#endif
+	float interval;
 public:
 	FeedbackInfo()
 	{
 		cur_value = 0.f;
-		//default_value = 0.f;
+#ifdef _ENABLE_TRACE
+		last_value = 0.f;
+#endif
+		interval = 1.f;
 	}
+
+	void SetIntervalValue(float value)
+	{
+		interval = 1000.f * value; //for output real freq
+	}
+
 	void SetDefaultValue(float feedbackValue)
 	{
 		m_guard.Enter();
-		//default_value = feedbackValue;
 		cur_value = feedbackValue;
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Set default value: %f\n", feedbackValue);
+		last_value = feedbackValue;
+		debugPrintf("ASIOUAC: Set default value: %f\n", interval * feedbackValue);
 #endif
 		m_guard.Leave();
 	}
@@ -75,16 +85,16 @@ public:
 	{
 		m_guard.Enter();
 
-		float newValue = (float)feedbackValue / 65356.0f;
+		float newValue = (float)feedbackValue / 65536.0f;
 
 #ifdef _ENABLE_TRACE
-//		if((int)(100*newValue) != (int)(100*cur_value))
-//			debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
+		if(newValue != 0.f && fabs(last_value - newValue)/newValue > 0.5f / interval)
+			//(int)(10*last_value) != (int)(10*newValue))
+			debugPrintf("ASIOUAC: Set fb value: %f (raw = %d, curVal = %f)\n", interval * newValue, feedbackValue, interval * cur_value);
+
+		last_value = newValue;
 #endif
-		if(cur_value == 0.f || newValue == 0.0f)
-			cur_value = newValue;
-		else
-			cur_value = (1.f - koeff_e) * cur_value + koeff_e * newValue;
+		cur_value = newValue;
 
 		if(max_value == 0.f || max_value < cur_value)
 			max_value = cur_value;
@@ -93,56 +103,20 @@ public:
 		m_guard.Leave();
 	}
 
-/*
-	void SetValue(int feedbackValue)
-	{
-		m_guard.Enter();
-		if(feedbackValue == 0.f)
-		{
-			default_value = 0.f;
-			cur_value = 0.f;
-			debugPrintf("ASIOUAC: Set zero default value\n");
-		}
-		else
-		{
-			if(default_value == 0.f)
-			{
-				cur_value = 0.f;
-				debugPrintf("ASIOUAC: Set current value: 0\n");
-			}
-			else
-			{
-				if(cur_value == 0.f)
-				{
-					cur_value = default_value;
-					debugPrintf("ASIOUAC: Set current value: %f\n", cur_value);
-				}
-
-				float newValue = (float)feedbackValue / 65356.0f;
-
-#ifdef _ENABLE_TRACE
-//				if((int)(100*newValue) != (int)(100*cur_value))
-//					debugPrintf("ASIOUAC: Set feedback value: %f (raw = %d)\n", newValue, feedbackValue);
-#endif
-				if(cur_value == 0.f || newValue == 0.0f)
-					cur_value = newValue;
-				else
-					cur_value = (1.f - koeff_e) * cur_value + koeff_e * newValue;
-
-				if(max_value == 0.f || max_value < cur_value)
-					max_value = cur_value;
-				if(min_value == 0.f || min_value > cur_value)
-					min_value = cur_value;
-			}
-		}
-		m_guard.Leave();
-	}
-*/
 	float GetValue()
 	{
 		float retVal;
 		m_guard.Enter();
 		retVal = cur_value;
+		m_guard.Leave();
+		return retVal;
+	}
+
+	float GetFreqValue()
+	{
+		float retVal;
+		m_guard.Enter();
+		retVal = interval * cur_value;
 		m_guard.Leave();
 		return retVal;
 	}
@@ -157,7 +131,7 @@ public:
 	{
 		float retVal;
 		m_guard.Enter();
-		retVal = max_value;
+		retVal = interval * max_value;
 		m_guard.Leave();
 		return retVal;
 	}
@@ -166,7 +140,7 @@ public:
 	{
 		float retVal;
 		m_guard.Enter();
-		retVal = min_value;
+		retVal = interval * min_value;
 		m_guard.Leave();
 		return retVal;
 	}
@@ -273,6 +247,7 @@ public:
 		}
 	}
 
+
 	bool Start()
 	{
 #ifdef _ENABLE_TRACE
@@ -330,8 +305,15 @@ public:
 		bool retVal;
 		//signal for exit from forking mode
 		m_taskState = TaskThread::TaskStopped;
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: %s. Wait current job ending ...\n", m_Task.TaskName());
+#endif
 		//wait current job ending
 		m_inWork.Enter();
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: %s. Wait current job ending successfully\n", m_Task.TaskName());
+#endif
+
 		//suspend thread
 		retVal = (SuspendThread(m_Thread) != -1);
 
@@ -391,6 +373,7 @@ class AudioTask : public TaskThread
 
 	_TCHAR				m_taskName[64];
 	int					m_isoTransferErrorCount;
+
 protected:
 	USBAudioDevice*		m_device;
 
@@ -420,6 +403,13 @@ protected:
 	virtual int FillBuffer(ISOBuffer* buffer) = 0;
 	virtual bool RWBuffer(ISOBuffer* buffer, int len) = 0;
 	virtual void ProcessBuffer(ISOBuffer* buffer) = 0;
+
+#ifdef _ENABLE_TRACE
+	virtual void CalcStatistics(int sampleNumbers) {}
+	int					m_sampleNumbers;
+	DWORD				m_tickCount;
+#endif
+
 public:
 	AudioTask(int packetPerTransfer, _TCHAR* taskName) : m_device(NULL), 
 		m_pipeId(0),
@@ -440,6 +430,10 @@ public:
 		m_sampleSize(4), //default sample size in bytes
 		m_channelNumber(2),
 		m_isoTransferErrorCount(0)
+#ifdef _ENABLE_TRACE
+		, m_sampleNumbers(0)
+		, m_tickCount(0)
+#endif
 	{
 		memset(m_isoBuffers, 0, sizeof(m_isoBuffers));
 		_tcscpy_s(m_taskName, taskName);
@@ -489,6 +483,9 @@ class AudioDACTask : public AudioTask
 	FeedbackInfo*				m_feedbackInfo;
 	FillDataCallback			m_readDataCb;
 	void*						m_readDataCbContext;
+#ifdef _ENABLE_TRACE
+	FILE *m_dumpFile;
+#endif
 protected:
 	bool InitBuffers(int freq)
 	{
@@ -508,12 +505,26 @@ protected:
 	virtual int FillBuffer(ISOBuffer* buffer);
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
+
+#ifdef _ENABLE_TRACE
+	virtual void CalcStatistics(int sampleNumbers);
+#endif
+
 public:
 	AudioDACTask() : AudioTask(packetPerTransferDAC, "Audio DAC task"), m_feedbackInfo(NULL), m_readDataCb(NULL), m_readDataCbContext(NULL)
-	{}
+	{
+#ifdef _ENABLE_TRACE
+		m_dumpFile = fopen("c:\\dac_dump.bin", "wb");
+#endif
+	}
 
 	~AudioDACTask()
-	{}
+	{
+#ifdef _ENABLE_TRACE
+		if(m_dumpFile)
+			fclose(m_dumpFile);
+#endif
+	}
 
 	void SetFeedbackInfo(FeedbackInfo* fb)
 	{
@@ -552,6 +563,11 @@ protected:
 	virtual int FillBuffer(ISOBuffer* buffer);
 	virtual bool RWBuffer(ISOBuffer* buffer, int len);
 	virtual void ProcessBuffer(ISOBuffer* buffer);
+
+#ifdef _ENABLE_TRACE
+	virtual void CalcStatistics(int sampleNumbers);
+#endif
+
 public:
 	AudioADCTask() : AudioTask(packetPerTransferADC, "Audio ADC task"), m_feedbackInfo(NULL), m_writeDataCb(NULL), m_writeDataCbContext(NULL)
 	{}
@@ -573,9 +589,6 @@ public:
 
 class AudioFeedbackTask : public AudioTask
 {
-#ifdef _ENABLE_TRACE
-	int				m_lastFeedbackValue;
-#endif
 	FeedbackInfo*	m_feedbackInfo;
 protected:
 	bool InitBuffers(int freq)
@@ -599,9 +612,6 @@ protected:
 	virtual void ProcessBuffer(ISOBuffer* buffer);
 public:
 	AudioFeedbackTask() : AudioTask(packetPerTransferFb, "Audio feedback task"), m_feedbackInfo(NULL)
-#ifdef _ENABLE_TRACE
-		, m_lastFeedbackValue(0)
-#endif
 	{}
 
 	~AudioFeedbackTask()
