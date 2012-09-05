@@ -310,8 +310,11 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 
 #ifdef _ENABLE_TRACE
 		//You can dump data for analise like this
-		if(m_dumpFile)
+		if(m_dumpFile) { 
+			char packetstart[] = {'P', 'a', 'c', 'k', 'e', 't', ' ', 's', 't', 'a', 'r', 't', ' ', ' ', ' ', ' '}; // BSB added packet identifier 
+			fwrite(packetstart, 1, 16, m_dumpFile); // 16 bytes take as much space as L+R samples in hex dump for easy ascii reading
 			fwrite(nextXfer->DataBuffer, 1, dataLength, m_dumpFile);
+		}
 #endif
 
 #ifdef _ENABLE_TRACE
