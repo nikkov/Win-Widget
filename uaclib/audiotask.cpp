@@ -308,7 +308,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 		if(m_readDataCb)
 			m_readDataCb(m_readDataCbContext, nextXfer->DataBuffer, dataLength);
 #ifdef _ENABLE_TRACE
-		//debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), raw_cur_feedback, (float)dataLength/8.f, dataLength);
+//		debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), raw_cur_feedback, (float)dataLength/8.f, dataLength);
 #endif
 	}
 	else
