@@ -54,7 +54,6 @@ bool AudioTask::BeforeStart()
 #endif
 		return FALSE;
 	}
-
 	for(int i = 0; i < sizeof(m_isoBuffers) / sizeof(ISOBuffer); i++)
 	{
 		ISOBuffer* bufferEL = m_isoBuffers + i;
@@ -74,6 +73,8 @@ bool AudioTask::BeforeStart()
 	m_isStarted = TRUE;
 #ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: %s. Before start thread is OK\n", TaskName());
+	m_sampleNumbers = 0;
+	m_tickCount = 0;
 #endif
 	return TRUE;
 }
@@ -82,6 +83,7 @@ bool AudioTask::AfterStop()
 {
 	if(!m_isStarted)
 		return TRUE;
+
 	m_device->UsbAbortPipe((UCHAR)m_pipeId);
 
 	//index of last buffer in queue
@@ -114,6 +116,7 @@ bool AudioTask::AfterStop()
 #ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: %s. After stop thread is OK\n", TaskName());
 #endif
+
 	return TRUE;
 }
 
@@ -171,7 +174,7 @@ bool AudioTask::Work(volatile TaskState& taskState)
 	int dataLength = 0;
 
 	m_buffersGuard.Enter();
-	while(taskState == TaskStarted && NEXT_INDEX(m_outstandingIndex)!=m_completedIndex && m_device->GetErrorCode() == ERROR_SUCCESS)
+	while(taskState == TaskStarted && NEXT_INDEX(m_outstandingIndex) != m_completedIndex && m_device->GetErrorCode() == ERROR_SUCCESS)
 	{
 		nextXfer = m_isoBuffers + m_outstandingIndex;
 		dataLength = FillBuffer(nextXfer);
@@ -181,6 +184,7 @@ bool AudioTask::Work(volatile TaskState& taskState)
 
 		RWBuffer(nextXfer, dataLength);
 	}
+
 	//find next waiting buffer in queue
 	nextXfer = m_isoBuffers + m_completedIndex;
 	if (!nextXfer || taskState != TaskStarted) 
@@ -190,6 +194,7 @@ bool AudioTask::Work(volatile TaskState& taskState)
 #endif
 		return TRUE;
 	}
+
 	if(!m_device->OvlWait(nextXfer->OvlHandle, OVL_WAIT_TIMEOUT, KOVL_WAIT_FLAG_NONE, &transferred))
 //	if(!m_device->OvlWaitOrCancel(nextXfer->OvlHandle, OVL_WAIT_TIMEOUT, &transferred))
 	{
@@ -215,9 +220,14 @@ bool AudioTask::Work(volatile TaskState& taskState)
 		ProcessBuffer(nextXfer);
 		m_isoTransferErrorCount = 0; //reset error count
 	}
+
 	IsoXferComplete(nextXfer, transferred);
+#ifdef _ENABLE_TRACE
+	CalcStatistics(transferred);
+#endif
 	m_completedIndex = NEXT_INDEX(m_completedIndex);
 	m_buffersGuard.Leave();
+
 	return TRUE;
 }
 
@@ -232,9 +242,14 @@ bool AudioDACTask::BeforeStartInternal()
 #ifdef _ENABLE_TRACE
 		debugPrintf("ASIOUAC: %s. Clear feedback statistics\n", TaskName());
 #endif
+		m_feedbackInfo->SetIntervalValue((float)(8 / (1 << (m_interval - 1))));
 //		m_feedbackInfo->SetValue(0);
 		m_feedbackInfo->SetDefaultValue(m_defaultPacketSize);
 	}
+#ifdef _ENABLE_TRACE
+		m_sampleNumbers = 0;
+		m_tickCount = 0;
+#endif
 	return m_device->UsbSetPipePolicy((UCHAR)m_pipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue) &&
 		m_device->UsbSetPipePolicy((UCHAR)m_pipeId, RESET_PIPE_ON_RESUME, 1, &policyValue); //experimental
 }
@@ -250,21 +265,6 @@ bool AudioDACTask::AfterStopInternal()
 
 int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 {
-/*
-	float raw_cur_feedback = m_defaultPacketSize;
-	if(m_feedbackInfo != NULL)
-	{
-		float raw_cur_feedbackFromDevice = m_feedbackInfo->GetValue();
-		if(raw_cur_feedbackFromDevice == 0.f)
-		{
-			raw_cur_feedback = m_defaultPacketSize;
-			m_feedbackInfo->SetDefaultValue(m_defaultPacketSize);
-		}
-	}
-	else
-		raw_cur_feedback = m_defaultPacketSize;
-*/
-	
 	float raw_cur_feedback = m_feedbackInfo == NULL || m_feedbackInfo->GetValue() == 0.0f 
 						?  m_defaultPacketSize
 						:  m_feedbackInfo->GetValue(); //value in stereo samples in one second
@@ -294,7 +294,6 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 		for (int packetIndex = 0; packetIndex < nextXfer->IsoContext->NumberOfPackets; packetIndex++)
 		{
 			nextXfer->IsoContext->IsoPackets[packetIndex].Offset = nextOffSet;
-
 			nextOffSet += icur_feedback;
 			addSample += frac;
 			if(addSample > 1.f)
@@ -302,11 +301,19 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 				nextOffSet += m_channelNumber * m_sampleSize; //append additional stereo sample
 				addSample -= 1.f;
 			}
+			nextXfer->IsoContext->IsoPackets[packetIndex].Length = nextOffSet - nextXfer->IsoContext->IsoPackets[packetIndex].Offset;
 		}
 		dataLength = (int)nextOffSet;
 
 		if(m_readDataCb)
 			m_readDataCb(m_readDataCbContext, nextXfer->DataBuffer, dataLength);
+
+#ifdef _ENABLE_TRACE
+		//You can dump data for analise like this
+		if(m_dumpFile)
+			fwrite(nextXfer->DataBuffer, 1, dataLength, m_dumpFile);
+#endif
+
 #ifdef _ENABLE_TRACE
 		//debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), raw_cur_feedback, (float)dataLength/8.f, dataLength);
 #endif
@@ -336,7 +343,30 @@ void AudioDACTask::ProcessBuffer(ISOBuffer* buffer)
 {
 }
 
-
+#ifdef _ENABLE_TRACE
+void AudioDACTask::CalcStatistics(int sampleNumbers)
+{
+	if(m_tickCount == 0)
+	{
+		m_tickCount = GetTickCount();
+		m_sampleNumbers = 0;
+	}
+	else
+	{
+		DWORD curTick = GetTickCount();
+		m_sampleNumbers += sampleNumbers / m_channelNumber / m_sampleSize;
+		if(curTick - m_tickCount > 1000)
+		{
+			if(m_feedbackInfo == NULL)
+				debugPrintf("ASIOUAC: %s. Current sample freq: %f\n", TaskName(), (float)m_sampleNumbers / (float)(curTick - m_tickCount) * 1000.f);
+			else
+				debugPrintf("ASIOUAC: %s. Current sample freq: %f (interval %d), by fb=%f\n", TaskName(), (float)m_sampleNumbers / (float)(curTick - m_tickCount) * 1000.f, curTick - m_tickCount, m_feedbackInfo->GetFreqValue());
+			m_sampleNumbers = 0;
+			m_tickCount = curTick;
+		}
+	}
+}
+#endif
 
 bool AudioADCTask::BeforeStartInternal()
 {
@@ -344,6 +374,10 @@ bool AudioADCTask::BeforeStartInternal()
 		//m_feedbackInfo->SetValue(0);
 		m_feedbackInfo->SetDefaultValue(m_defaultPacketSize);
 	//return TRUE;
+#ifdef _ENABLE_TRACE
+		m_sampleNumbers = 0;
+		m_tickCount = 0;
+#endif
 
 	UCHAR policyValue = 1;
 	return m_device->UsbSetPipePolicy((UCHAR)m_pipeId, ISO_ALWAYS_START_ASAP, 1, &policyValue);
@@ -407,6 +441,13 @@ void AudioADCTask::ProcessBuffer(ISOBuffer* buffer)
 		m_feedbackInfo->SetValue((d1 << 16) + d2);
 	}
 }
+
+
+#ifdef _ENABLE_TRACE
+void AudioADCTask::CalcStatistics(int sampleNumbers)
+{
+}
+#endif
 
 
 int AudioFeedbackTask::FillBuffer(ISOBuffer* nextXfer)
