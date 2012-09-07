@@ -515,6 +515,7 @@ public:
 	{
 #ifdef _ENABLE_TRACE
 		m_dumpFile = fopen("c:\\dac_dump.bin", "wb");
+		debugPrintf("Created file c:\\dac_dump.bin");
 #endif
 	}
 
