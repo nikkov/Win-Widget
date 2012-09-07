@@ -1,5 +1,17 @@
-// test02.cpp : Defines the entry point for the console application.
-//
+/*!
+#
+# dump2wav. Windows related software for Audio-Widget/SDR-Widget (http://code.google.com/p/sdr-widget/)
+# Copyright (C) 2012 Børge Strand-Bergesen
+#
+# Permission to copy, use, modify, sell and distribute this software 
+# is granted provided this copyright notice appears in all copies. 
+# This software is provided "as is" without express or implied
+# warranty, and with no claim as to its suitability for any purpose.
+#
+#----------------------------------------------------------------------------
+# Contact: borge.strand@gmail.com
+#----------------------------------------------------------------------------
+*/
 
 
 #include "stdafx.h"
