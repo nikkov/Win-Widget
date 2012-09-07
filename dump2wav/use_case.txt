@@ -1,0 +1,3 @@
+dump2wav 44 c:\dac_dump.bin c:\tag01.wav
+
+Replace "44" with "48", "88", "96", "176" or "192" to set sample rate of tag01.wav
