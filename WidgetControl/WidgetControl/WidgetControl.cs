@@ -39,6 +39,20 @@ namespace WidgetControl
         private const int productid3   = 0x0007;
         private const int productid4   = 0x03e9;
         private const int interfaceNumber = 0;
+        // BSB 20120928 Lowercase from usb_descriptors.h
+        private const int audio_vendor_id      = 0x16d0;
+        private const int audio_product_id_1   = 0x0761;		// SDR-WIDGET UAC1 PID
+        private const int audio_product_id_2   = 0x0762;		// SDR-WIDGET UAC2 PID
+        private const int audio_product_id_3   = 0x0763;		// USB9023    UAC1 PID
+        private const int audio_product_id_4   = 0x0764;		// USB9023    UAC2 PID
+        private const int audio_product_id_5   = 0x0765;		// USB5102    UAC1 PID
+        private const int audio_product_id_6   = 0x0766;		// USB5102    UAC2 PID
+        private const int audio_product_id_7   = 0x0767;		// USB8741    UAC1 PID
+        private const int audio_product_id_8   = 0x0768;		// USB8741    UAC2 PID
+        private const int audio_product_id_9   = 0x075C;		// AB-1.x     UAC1 PID
+        private const int audio_product_id_10  = 0x075D;		// AB-1.x     UAC2 PID
+        private const int audio_product_id_11  = 0x075E;		// QNKTC future use UAC1 PID
+        private const int audio_product_id_12  = 0x075F;		// QNKTC future use UAC2 PID
 
         LstK deviceList = null;
         UsbK usb = null;
@@ -117,11 +131,35 @@ namespace WidgetControl
             deviceList.MoveReset();
             while (deviceList.MoveNext(out deviceInfo))
             {
-                if (
-                    (deviceInfo.Common.Vid == vendorid1 || deviceInfo.Common.Vid == vendorid2) &&
-                    (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3 || deviceInfo.Common.Pid == productid4) &&
-                     deviceInfo.DeviceInterfaceGUID.ToUpper() == "{D49AB938-53BA-498A-A848-8E2780A4A75F}"
-                    )
+                if ( // BSB 20120928 revised test
+//                    (deviceInfo.Common.Vid == vendorid1 || deviceInfo.Common.Vid == vendorid2) &&
+//                    (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3 || deviceInfo.Common.Pid == productid4) &&
+//                     deviceInfo.DeviceInterfaceGUID.ToUpper() == "{D49AB938-53BA-498A-A848-8E2780A4A75F}"
+                     (deviceInfo.DeviceInterfaceGUID.ToUpper() == "{D49AB938-53BA-498A-A848-8E2780A4A75F}") && 
+                     (
+                       (
+                         (deviceInfo.Common.Vid == vendorid1 || deviceInfo.Common.Vid == vendorid2) &&
+                         (deviceInfo.Common.Pid == productid1 || deviceInfo.Common.Pid == productid2 || deviceInfo.Common.Pid == productid3 || deviceInfo.Common.Pid == productid4)
+                       ) ||
+                       (
+                         (deviceInfo.Common.Vid == audio_vendor_id) && 
+                         (
+                           (deviceInfo.Common.Pid == audio_product_id_1) ||
+                           (deviceInfo.Common.Pid == audio_product_id_2) ||
+                           (deviceInfo.Common.Pid == audio_product_id_3) ||
+                           (deviceInfo.Common.Pid == audio_product_id_4) ||
+                           (deviceInfo.Common.Pid == audio_product_id_5) ||
+                           (deviceInfo.Common.Pid == audio_product_id_6) ||
+                           (deviceInfo.Common.Pid == audio_product_id_7) ||
+                           (deviceInfo.Common.Pid == audio_product_id_8) ||
+                           (deviceInfo.Common.Pid == audio_product_id_9) ||
+                           (deviceInfo.Common.Pid == audio_product_id_10) ||
+                           (deviceInfo.Common.Pid == audio_product_id_11) ||
+                           (deviceInfo.Common.Pid == audio_product_id_12)
+                         )
+                       ) 
+                     )
+                   )
                 {
                     if (deviceInfo.Connected)
                     {
