@@ -26,7 +26,7 @@ OutputBaseFilename=AWSetup
 Compression = lzma
 SolidCompression = yes
 ; Win2000 or higher
-MinVersion = 5,5
+MinVersion = 5.0
 WizardSmallImageFile=ASIO.bmp
 
 ; This installation requires admin priviledges. This is needed to install
