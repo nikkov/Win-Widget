@@ -50,6 +50,8 @@ class FeedbackInfo
 	Mutex m_guard;
 	float cur_value;
 
+	float playback_value; // BSB 20121222 added default sample rate value for playback
+
 	float max_value;
 	float min_value;
 #ifdef _ENABLE_TRACE
@@ -77,6 +79,7 @@ public:
 		cur_value = feedbackValue;
 #ifdef _ENABLE_TRACE
 		last_value = feedbackValue;
+		playback_value = feedbackValue; // BSB 20121222 added
 		debugPrintf("ASIOUAC: Set default value: %f\n", interval * feedbackValue);
 #endif
 		m_guard.Leave();
@@ -90,7 +93,8 @@ public:
 #ifdef _ENABLE_TRACE
 		if(newValue != 0.f && fabs(last_value - newValue)/newValue > 0.5f / interval)
 			//(int)(10*last_value) != (int)(10*newValue))
-			debugPrintf("ASIOUAC: Set fb value: %f (raw = %d, curVal = %f)\n", interval * newValue, feedbackValue, interval * cur_value);
+//			debugPrintf("ASIOUAC: Set fb value: %f (raw = %d, curVal = %f)\n", interval * newValue, feedbackValue, interval * cur_value);
+			debugPrintf("ASIOUAC: Set fb value: %f (raw = %d, cur_value = %f, playback_value = %f)\n", interval * newValue, feedbackValue, interval * cur_value, interval * playback_value);
 
 		last_value = newValue;
 #endif
