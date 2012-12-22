@@ -88,13 +88,18 @@ public:
 	{
 		m_guard.Enter();
 
-		float newValue = (float)feedbackValue / 65536.0f;
+		// BSB 20121222 revised to support both 16.16 and 15.17 feedback
+		float newValue = (float)feedbackValue / 32768.0f;	// Must divide by 32768.0f when FW uses 16.16 samples / 125µs microframe
+
+		if (newValue > playback_value * 1.5) {				// Must divide by 65536.0f when FW uses 15.17 samples / 125µs microframe
+			newValue = newValue / 2;						// Inspired by https://git.kernel.org/?p=linux/kernel/git/tiwai/sound.git;a=blob;f=sound/usb/endpoint.c l 1081
+		}
 
 #ifdef _ENABLE_TRACE
 		if(newValue != 0.f && fabs(last_value - newValue)/newValue > 0.5f / interval)
 			//(int)(10*last_value) != (int)(10*newValue))
 //			debugPrintf("ASIOUAC: Set fb value: %f (raw = %d, curVal = %f)\n", interval * newValue, feedbackValue, interval * cur_value);
-			debugPrintf("ASIOUAC: Set fb value: %f (raw = %d, cur_value = %f, playback_value = %f)\n", interval * newValue, feedbackValue, interval * cur_value, interval * playback_value);
+			debugPrintf("ASIOUAC: Set fb value: %f (raw=%d, cur_value=%f, playback_value=%f)\n", interval * newValue, feedbackValue, interval * cur_value, interval * playback_value);
 
 		last_value = newValue;
 #endif
