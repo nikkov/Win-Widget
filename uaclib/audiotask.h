@@ -77,9 +77,10 @@ public:
 	{
 		m_guard.Enter();
 		cur_value = feedbackValue;
+		playback_value = feedbackValue; // BSB 20121222 added
+
 #ifdef _ENABLE_TRACE
 		last_value = feedbackValue;
-		playback_value = feedbackValue; // BSB 20121222 added
 		debugPrintf("ASIOUAC: Set default value: %f\n", interval * feedbackValue);
 #endif
 		m_guard.Leave();
@@ -95,6 +96,9 @@ public:
 			newValue = newValue / 2;						// Inspired by https://git.kernel.org/?p=linux/kernel/git/tiwai/sound.git;a=blob;f=sound/usb/endpoint.c l 1081
 		}
 
+
+		// Why does this seem to work with _ENABLE_TRACE defined????? 
+
 #ifdef _ENABLE_TRACE
 		if(newValue != 0.f && fabs(last_value - newValue)/newValue > 0.5f / interval)
 			//(int)(10*last_value) != (int)(10*newValue))
@@ -103,6 +107,7 @@ public:
 
 		last_value = newValue;
 #endif
+
 		cur_value = newValue;
 
 		if(max_value == 0.f || max_value < cur_value)
