@@ -267,7 +267,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 {
 	float raw_cur_feedback = m_feedbackInfo == NULL || m_feedbackInfo->GetValue() == 0.0f 
 						?  m_defaultPacketSize
-						:  m_feedbackInfo->GetValue(); //value in stereo samples in one second
+						:  m_feedbackInfo->GetValue(); //value in stereo samples in one second // BSB: or in one milisecond??
 
 	int maxSamplesInPacket = m_packetSize / m_channelNumber / m_sampleSize; //max stereo samples in one packet
 	if(raw_cur_feedback > (float)(maxSamplesInPacket))
@@ -284,22 +284,30 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 		//in one second we have 8 / (1 << (m_interval - 1)) packets
 		//one packet must contain samples number = [cur_feedback * (1 << (m_interval - 1)) / 8]
 		float cur_feedback = raw_cur_feedback; //number stereo samples in one packet
-		int icur_feedback = (int)cur_feedback;
+		int icur_feedback = (int)(cur_feedback + 0.5f); // BSB: added +0.5f to get round() function. (int)(f) === floor(f), f>=0
 		int nextOffSet = 0;
+		static float addSample = 0; // BSB: added static.
 		float frac = cur_feedback - icur_feedback;
-		if(raw_cur_feedback == (float)maxSamplesInPacket)
+		if(raw_cur_feedback == (float)maxSamplesInPacket) 
+		{
 			frac = 0.f;
+			addSample = 0;
+		}
 		icur_feedback *= m_channelNumber * m_sampleSize;
-		float addSample = 0;
 		for (int packetIndex = 0; packetIndex < nextXfer->IsoContext->NumberOfPackets; packetIndex++)
 		{
 			nextXfer->IsoContext->IsoPackets[packetIndex].Offset = nextOffSet;
 			nextOffSet += icur_feedback;
 			addSample += frac;
-			if(addSample > 1.f)
+			if(addSample > 0.5f) // 1.f)
 			{
 				nextOffSet += m_channelNumber * m_sampleSize; //append additional stereo sample
 				addSample -= 1.f;
+			}
+			else if(addSample < -0.5f) // -1.f)	// BSB: Added negative case
+			{
+				nextOffSet -= m_channelNumber * m_sampleSize; //append additional stereo sample
+				addSample += 1.f;
 			}
 			nextXfer->IsoContext->IsoPackets[packetIndex].Length = nextOffSet - nextXfer->IsoContext->IsoPackets[packetIndex].Offset;
 		}

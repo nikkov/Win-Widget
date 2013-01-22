@@ -96,9 +96,6 @@ public:
 			newValue = newValue / 2;						// Inspired by https://git.kernel.org/?p=linux/kernel/git/tiwai/sound.git;a=blob;f=sound/usb/endpoint.c l 1081
 		}
 
-
-		// Why does this seem to work with _ENABLE_TRACE defined????? 
-
 #ifdef _ENABLE_TRACE
 		if(newValue != 0.f && fabs(last_value - newValue)/newValue > 0.5f / interval)
 			//(int)(10*last_value) != (int)(10*newValue))
