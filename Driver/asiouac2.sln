@@ -11,15 +11,20 @@ EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
+		Release with Trace|Win32 = Release with Trace|Win32
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Debug|Win32.ActiveCfg = Debug|Win32
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Debug|Win32.Build.0 = Debug|Win32
+		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Release with Trace|Win32.ActiveCfg = Release with Trace|Win32
+		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Release with Trace|Win32.Build.0 = Release with Trace|Win32
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Release|Win32.ActiveCfg = Release|Win32
 		{F47BECCA-9313-4A58-BD05-49A835D017D5}.Release|Win32.Build.0 = Release|Win32
 		{6964BC9D-1940-424C-9273-921F7C60D72A}.Debug|Win32.ActiveCfg = Debug|Win32
 		{6964BC9D-1940-424C-9273-921F7C60D72A}.Debug|Win32.Build.0 = Debug|Win32
+		{6964BC9D-1940-424C-9273-921F7C60D72A}.Release with Trace|Win32.ActiveCfg = Release with Trace|Win32
+		{6964BC9D-1940-424C-9273-921F7C60D72A}.Release with Trace|Win32.Build.0 = Release with Trace|Win32
 		{6964BC9D-1940-424C-9273-921F7C60D72A}.Release|Win32.ActiveCfg = Release|Win32
 		{6964BC9D-1940-424C-9273-921F7C60D72A}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection

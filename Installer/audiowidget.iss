@@ -16,17 +16,17 @@ Name: Russian; MessagesFile: compiler:Languages\Russian.isl; LicenseFile: licens
 
 [Setup]
 AppName = Audio-Widget driver
-AppVerName = Audio-Widget driver 0.1.1.0
+AppVerName = Audio-Widget driver 0.1.2.0
 AppPublisher = Nikolay Kovbasa
 AppPublisherURL = https://sites.google.com/site/nikkov/home
-AppVersion = 0.1.1.0
+AppVersion = 0.1.2.0
 DefaultDirName = {pf}\Audio-Widget
 DefaultGroupName = Audio-Widget
 OutputBaseFilename=AWSetup
 Compression = lzma
 SolidCompression = yes
 ; Win2000 or higher
-MinVersion = 5,5
+MinVersion = 5.0
 WizardSmallImageFile=ASIO.bmp
 
 ; This installation requires admin priviledges. This is needed to install

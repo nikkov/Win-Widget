@@ -63,7 +63,7 @@ void AsioUAC2::timerOff ()
 //------------------------------------------------------------------------------------------
 static DWORD __stdcall ASIOThread (void *param)
 {
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Start ASIOThread!, theDriver = %X, MilliSeconds = %d", theDriver, theDriver->getMilliSeconds ());
 #endif
 	int i = 0;
@@ -81,7 +81,7 @@ static DWORD __stdcall ASIOThread (void *param)
 
 		}
 	} while (!done);
-#ifdef _DEBUG
+#ifdef _ENABLE_TRACE
 	debugPrintf("ASIOUAC: Stop ASIOThread!");
 #endif
 	return 0;
