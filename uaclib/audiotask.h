@@ -473,7 +473,7 @@ public:
 		m_channelNumber = channelNumber;
 		m_sampleSize = sampleSize;
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: %s. AudioTask::Init(MaxPacketSize=%d, Interval=%d, ChannelNum=%d, SampleSize=%d)\n", 
+		debugPrintf("ASIOUAC: Init() %s. AudioTask::Init(MaxPacketSize=%d, Interval=%d, ChannelNum=%d, SampleSize=%d)\n", 
 			TaskName(), (int)maximumPacketSize, (int)m_interval, (int)m_channelNumber, (int)m_sampleSize);
 #endif
 	}
@@ -526,7 +526,7 @@ public:
 	{
 #ifdef _ENABLE_TRACE
 		m_dumpFile = fopen("c:\\dac_dump.bin", "wb");
-		debugPrintf("Created file c:\\dac_dump.bin");
+		debugPrintf("AudioDACTask() : AudioTask() Created file c:\\dac_dump.bin");
 #endif
 	}
 

@@ -109,7 +109,7 @@ bool USBAudioDevice::ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor)
 				case AUDIO_INTERFACE_SUBCLASS_AUDIOCONTROL:
 					{	
 #ifdef _ENABLE_TRACE
-						debugPrintf("ASIOUAC: Found audio control interface 0x%X\n", interfaceDescriptor->bInterfaceNumber);
+						debugPrintf("ASIOUAC: USBAudioDevice::ParseDescriptorInternal() Found audio control interface 0x%X\n", interfaceDescriptor->bInterfaceNumber);
 #endif
 						USBAudioControlInterface *iACface = new USBAudioControlInterface(interfaceDescriptor);
 						m_lastParsedInterface = iACface;
@@ -120,7 +120,7 @@ bool USBAudioDevice::ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor)
 				case AUDIO_INTERFACE_SUBCLASS_AUDIOSTREAMING:
 					{
 #ifdef _ENABLE_TRACE
-						debugPrintf("ASIOUAC: Found audio streaming interface 0x%X (alt num 0x%X) with %d endpoints\n", interfaceDescriptor->bInterfaceNumber, 
+						debugPrintf("ASIOUAC: USBAudioDevice::ParseDescriptorInternal() Found audio streaming interface 0x%X (alt num 0x%X) with %d endpoints\n", interfaceDescriptor->bInterfaceNumber, 
 							interfaceDescriptor->bAlternateSetting, interfaceDescriptor->bNumEndpoints);
 #endif
 						USBAudioStreamingInterface *iASface = new USBAudioStreamingInterface(interfaceDescriptor);
@@ -179,7 +179,7 @@ bool USBAudioDevice::InitDevice()
 					(epoint->m_descriptor.bmAttributes & 0x0C) != 0) //not feedback
 				{
 #ifdef _ENABLE_TRACE
-				    debugPrintf("ASIOUAC: Found input endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
+				    debugPrintf("ASIOUAC: USBAudioDevice::InitDevice() Found input endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
 #endif
 					int channelNumber = 2;
 					USBAudioOutTerminal* outTerm = FindOutTerminal(iface->m_asgDescriptor.bTerminalLink);
@@ -226,7 +226,7 @@ bool USBAudioDevice::InitDevice()
 					(epoint->m_descriptor.bmAttributes & 0x0C) == 0) //feedback
 				{
 #ifdef _ENABLE_TRACE
-					debugPrintf("ASIOUAC: Found feedback endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
+					debugPrintf("ASIOUAC: USBAudioDevice::InitDevice() Found feedback endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
 #endif
 					m_feedback = new AudioFeedback();
 					m_feedback->Init(this, &m_fbInfo, epoint->m_descriptor.bEndpointAddress, epoint->m_descriptor.wMaxPacketSize, epoint->m_descriptor.bInterval, 4);
@@ -254,7 +254,7 @@ bool USBAudioDevice::InitDevice()
 					(epoint->m_descriptor.bmAttributes & 0x03) == USB_ENDPOINT_TYPE_ISOCHRONOUS)
 				{
 #ifdef _ENABLE_TRACE
-					debugPrintf("ASIOUAC: Found output endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
+					debugPrintf("ASIOUAC: USBAudioDevice::InitDevice() Found output endpoint 0x%X\n",  (int)epoint->m_descriptor.bEndpointAddress);
 #endif
 					int channelNumber = 2;
 					USBAudioInTerminal* inTerm = FindInTerminal(iface->m_asgDescriptor.bTerminalLink);
@@ -294,14 +294,14 @@ bool USBAudioDevice::CheckSampleRate(USBAudioClockSource* clocksrc, int newfreq)
 		{
 	        m_errorCode = GetLastErrorInternal();
 #ifdef _ENABLE_TRACE
-		    debugPrintf("ASIOUAC: Enumerate samplerate failed. ErrorCode: %08Xh\n",  m_errorCode);
+		    debugPrintf("ASIOUAC: USBAudioDevice::CheckSampleRate() Enumerate samplerate failed. ErrorCode: %08Xh\n",  m_errorCode);
 #endif
 		}
 		else
 			if(lengthTransferred <= 2)
 			{
 #ifdef _ENABLE_TRACE
-				debugPrintf("ASIOUAC: Enumerate samplerate failed. Wrong transfer length\n");
+				debugPrintf("ASIOUAC: USBAudioDevice::CheckSampleRate() Enumerate samplerate failed. Wrong transfer length\n");
 #endif
 				retValue = FALSE;
 			}
@@ -330,14 +330,14 @@ bool USBAudioDevice::CheckSampleRate(USBAudioClockSource* clocksrc, int newfreq)
 		}
 		UsbReleaseInterface(clocksrc->m_interface->Descriptor().bInterfaceNumber);
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Sample freq: %d %s\n", newfreq, retVal ? "is supported" : "isn't supported");
+		debugPrintf("ASIOUAC: USBAudioDevice::CheckSampleRate() Sample freq: %d %s\n", newfreq, retVal ? "is supported" : "isn't supported");
 #endif
 	}
 	else
 	{
         m_errorCode = GetLastErrorInternal();
 #ifdef _ENABLE_TRACE
-        debugPrintf("ASIOUAC: Claim interface %d failed. ErrorCode: %08Xh\n", clocksrc->m_interface->Descriptor().bInterfaceNumber, m_errorCode);
+        debugPrintf("ASIOUAC: USBAudioDevice::CheckSampleRate() Claim interface %d failed. ErrorCode: %08Xh\n", clocksrc->m_interface->Descriptor().bInterfaceNumber, m_errorCode);
 #endif
 	}
 	return retVal;
@@ -369,7 +369,7 @@ bool USBAudioDevice::SetSampleRateInternal(int freq)
 	if(!clockSource)
 	{
 #ifdef _ENABLE_TRACE
-        debugPrintf("ASIOUAC: Not found clock source for sample rate %d\n", freq);
+        debugPrintf("ASIOUAC: USBAudioDevice::SetSampleRateInternal() Not found clock source for sample rate %d\n", freq);
 #endif
 		return FALSE;
 	}
@@ -383,14 +383,14 @@ bool USBAudioDevice::SetSampleRateInternal(int freq)
 		{
 	        m_errorCode = GetLastErrorInternal();
 #ifdef _ENABLE_TRACE
-		    debugPrintf("ASIOUAC: Set samplerate %d failed. ErrorCode: %08Xh\n",  freq, m_errorCode);
+		    debugPrintf("ASIOUAC: USBAudioDevice::SetSampleRateInternal() Set samplerate %d failed. ErrorCode: %08Xh\n",  freq, m_errorCode);
 #endif
 		}
 		else
 			if(lengthTransferred != 4)
 			{
 #ifdef _ENABLE_TRACE
-				debugPrintf("ASIOUAC: Set samplerate %d failed. Wrong transfer length\n",  freq);
+				debugPrintf("ASIOUAC: USBAudioDevice::SetSampleRateInternal() Set samplerate %d failed. Wrong transfer length\n",  freq);
 #endif
 				retValue = FALSE;
 			}
@@ -400,7 +400,7 @@ bool USBAudioDevice::SetSampleRateInternal(int freq)
 	{
         m_errorCode = GetLastErrorInternal();
 #ifdef _ENABLE_TRACE
-        debugPrintf("ASIOUAC: Claim interface %d failed. ErrorCode: %08Xh\n", clockSource->m_interface->Descriptor().bInterfaceNumber, m_errorCode);
+        debugPrintf("ASIOUAC: USBAudioDevice::SetSampleRateInternal() Claim interface %d failed. ErrorCode: %08Xh\n", clockSource->m_interface->Descriptor().bInterfaceNumber, m_errorCode);
 #endif
 	}
 	return retValue;
@@ -439,14 +439,14 @@ int USBAudioDevice::GetSampleRateInternal(int interfaceNum, int clockID)
 			freq = 0;
 	        m_errorCode = GetLastErrorInternal();
 #ifdef _ENABLE_TRACE
-		    debugPrintf("ASIOUAC: Get samplerate %d failed. ErrorCode: %08Xh\n",  freq, m_errorCode);
+		    debugPrintf("ASIOUAC: USBAudioDevice::GetSampleRateInternal() Get samplerate %d failed. ErrorCode: %08Xh\n",  freq, m_errorCode);
 #endif
 		}
 		else
 			if(lengthTransferred != 4)
 			{
 #ifdef _ENABLE_TRACE
-				debugPrintf("ASIOUAC: Get samplerate %d failed. Wrong transfer length\n",  freq);
+				debugPrintf("ASIOUAC: USBAudioDevice::GetSampleRateInternal() Get samplerate %d failed. Wrong transfer length\n",  freq);
 #endif
 				freq = 0;
 			}
@@ -456,7 +456,7 @@ int USBAudioDevice::GetSampleRateInternal(int interfaceNum, int clockID)
 	{
         m_errorCode = GetLastErrorInternal();
 #ifdef _ENABLE_TRACE
-        debugPrintf("ASIOUAC: Claim interface %d failed. ErrorCode: %08Xh\n", interfaceNum, m_errorCode);
+        debugPrintf("ASIOUAC: USBAudioDevice::GetSampleRateInternal() Claim interface %d failed. ErrorCode: %08Xh\n", interfaceNum, m_errorCode);
 #endif
 	}
 	return freq;
@@ -468,7 +468,7 @@ bool USBAudioDevice::SetSampleRate(int freq)
 		return FALSE;
 
 #ifdef _ENABLE_TRACE
-	debugPrintf("ASIOUAC: Set samplerate %d\n",  freq);
+	debugPrintf("ASIOUAC: USBAudioDevice::SetSampleRate() %d\n",  freq);
 #endif
 	if(SetSampleRateInternal(freq))
 	{
@@ -497,7 +497,7 @@ bool USBAudioDevice::Start()
 	bool retVal = TRUE;
 
 #ifdef _ENABLE_TRACE
-	debugPrintf("ASIOUAC: USBAudioDevice start\n");
+	debugPrintf("ASIOUAC: USBAudioDevice::Start()\n");
 #endif
 
 	if(m_adcEndpoint)
@@ -505,7 +505,7 @@ bool USBAudioDevice::Start()
 		UsbClaimInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber);
 		UsbSetAltInterface(m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Claim ADC interface 0x%X (alt 0x%X)\n", m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, 
+		debugPrintf("ASIOUAC: USBAudioDevice::Start() Claim ADC interface 0x%X (alt 0x%X)\n", m_adcEndpoint->m_interface->Descriptor().bInterfaceNumber, 
 			m_adcEndpoint->m_interface->Descriptor().bAlternateSetting);
 #endif
 		if(m_adc != NULL)
@@ -517,7 +517,7 @@ bool USBAudioDevice::Start()
 		UsbClaimInterface(m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber);
 		UsbSetAltInterface(m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, m_dacEndpoint->m_interface->Descriptor().bAlternateSetting);
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Claim DAC interface 0x%X (alt 0x%X)\n", m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, 
+		debugPrintf("ASIOUAC: USBAudioDevice::Start() Claim DAC interface 0x%X (alt 0x%X)\n", m_dacEndpoint->m_interface->Descriptor().bInterfaceNumber, 
 			m_dacEndpoint->m_interface->Descriptor().bAlternateSetting);
 #endif
 		if(m_dac != NULL)
@@ -536,7 +536,7 @@ bool USBAudioDevice::Stop()
 		return FALSE;
 
 #ifdef _ENABLE_TRACE
-	debugPrintf("ASIOUAC: USBAudioDevice stop\n");
+	debugPrintf("ASIOUAC: USBAudioDevice::Stop()\n");
 #endif
 	bool retVal = TRUE;
 
@@ -552,7 +552,7 @@ bool USBAudioDevice::Stop()
 	if(!IsConnected())
 	{
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Device isn't connected\n");
+		debugPrintf("ASIOUAC: USBAudioDevice::Stop() Device isn't connected\n");
 #endif
 		m_isStarted = FALSE;
 		return FALSE;
@@ -561,7 +561,7 @@ bool USBAudioDevice::Stop()
 	if(m_adcEndpoint)
 	{
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Try release ADC interfaces\n");
+		debugPrintf("ASIOUAC: USBAudioDevice::Stop() Try release ADC interfaces\n");
 #endif
 		USBAudioStreamingInterface * iface = m_asInterfaceList.First();
 		while(iface)
@@ -573,7 +573,7 @@ bool USBAudioDevice::Stop()
 				UsbSetAltInterface(iface->Descriptor().bInterfaceNumber, iface->Descriptor().bAlternateSetting);
 				UsbReleaseInterface(iface->Descriptor().bInterfaceNumber);
 #ifdef _ENABLE_TRACE
-				debugPrintf("ASIOUAC: Release ADC interface 0x%X\n", iface->Descriptor().bInterfaceNumber);
+				debugPrintf("ASIOUAC: USBAudioDevice::Stop() Release ADC interface 0x%X\n", iface->Descriptor().bInterfaceNumber);
 #endif
 				break;
 			}
@@ -583,7 +583,7 @@ bool USBAudioDevice::Stop()
 	if(m_dacEndpoint)
 	{
 #ifdef _ENABLE_TRACE
-		debugPrintf("ASIOUAC: Try release DAC interfaces\n");
+		debugPrintf("ASIOUAC: USBAudioDevice::Stop() Try release DAC interfaces\n");
 #endif
 		USBAudioStreamingInterface * iface = m_asInterfaceList.First();
 		while(iface)
@@ -595,7 +595,7 @@ bool USBAudioDevice::Stop()
 				UsbSetAltInterface(iface->Descriptor().bInterfaceNumber, iface->Descriptor().bAlternateSetting);
 				UsbReleaseInterface(iface->Descriptor().bInterfaceNumber);
 #ifdef _ENABLE_TRACE
-				debugPrintf("ASIOUAC: Release DAC interface 0x%X\n", iface->Descriptor().bInterfaceNumber);
+				debugPrintf("ASIOUAC: USBAudioDevice::Stop() Release DAC interface 0x%X\n", iface->Descriptor().bInterfaceNumber);
 #endif
 				break;
 			}
