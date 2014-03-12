@@ -242,6 +242,16 @@ ASIOBool AsioUAC2::init (void* sysRef)
 	debugPrintf("ASIOUAC: AsioUAC2::init() end InitDevice(); \n");
 #endif
 
+//	BSB 20140312 copied from AsioUAC2::outputOpen()
+	m_NumOutputs = m_device->GetOutputChannelNumber();
+
+// BSB 20140312 copied from AsioUAC2::inputOpen()
+	m_NumInputs = m_device->GetInputChannelNumber();
+
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::init() end channel setup; \n");
+#endif
+
 	if (inputOpen ())
 	{
 		if (outputOpen ())
@@ -781,7 +791,9 @@ bool AsioUAC2::inputOpen ()
 
 	m_inputSampleSize = m_device->GetADCSubslotSize();
 
+//	BSB 20140312 replicated in AsioUAC2::init
 	m_NumInputs = m_device->GetInputChannelNumber();
+
 	if(inputBuffers)
 		delete inputBuffers;
 	inputBuffers = new char*[m_NumInputs * 2];
@@ -851,7 +863,9 @@ bool AsioUAC2::outputOpen()
 
 	m_outputSampleSize = m_device->GetDACSubslotSize();
 
+//	BSB 20140312 replicated in AsioUAC2::init
 	m_NumOutputs = m_device->GetOutputChannelNumber();
+
 	if(outputBuffers)
 		delete outputBuffers;
 	outputBuffers = new char*[m_NumOutputs * 2];
