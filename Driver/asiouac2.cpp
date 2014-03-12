@@ -601,6 +601,10 @@ ASIOError AsioUAC2::getChannelInfo (ASIOChannelInfo *info)
 ASIOError AsioUAC2::createBuffers (ASIOBufferInfo *bufferInfos, long numChannels,
 	long bufferSize, ASIOCallbacks *callbacks)
 {
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::createBuffers() begin numChannels = %d\n", numChannels);
+#endif
+
 	ASIOBufferInfo *info = bufferInfos;
 	long i;
 	bool notEnoughMem = false;
