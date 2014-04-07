@@ -223,7 +223,8 @@ bool AudioTask::Work(volatile TaskState& taskState)
 
 	IsoXferComplete(nextXfer, transferred);
 #ifdef _ENABLE_TRACE
-	CalcStatistics(transferred);
+// BSB 20140407 Temporarily removing feedback logging from debug
+//	CalcStatistics(transferred);
 #endif
 	m_completedIndex = NEXT_INDEX(m_completedIndex);
 	m_buffersGuard.Leave();
@@ -353,6 +354,7 @@ bool AudioDACTask::RWBuffer(ISOBuffer* nextXfer, int len)
 void AudioDACTask::ProcessBuffer(ISOBuffer* buffer)
 {
 }
+
 
 #ifdef _ENABLE_TRACE
 void AudioDACTask::CalcStatistics(int sampleNumbers)
