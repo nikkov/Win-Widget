@@ -78,6 +78,7 @@ AudioSample4 globalSineBuffer[48];
 // Memory pointers to Wav file data
 AudioSample3 * globalWavBuffer3;
 AudioSample4 * globalWavBuffer4;
+DWORD globalParsedSamples;		// The number of samples read in from the wav file, independant of sample format
 
 DWORD globalBufferIndex = 0;
 DWORD globalPacketCounter = 0;
@@ -193,7 +194,7 @@ int ParseWavHeader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 
 
 // Generate a sine table of 48 32-bit entries
-void FillBuffer(AudioSample4* sinebuffer, bool zoom)
+void FillSineBuffer(AudioSample4* sinebuffer, bool zoom)
 {
 	memset(sinebuffer, 0, 48*sizeof(AudioSample4));
 	for(int i = 0; i < 48; i++) {
@@ -209,7 +210,7 @@ void FillBuffer(AudioSample4* sinebuffer, bool zoom)
 
 
 // Move data from sine table to USB device. This function is passed as a callback
-void FillData3(void* context, UCHAR *buffer, int& len)
+void FillSineData3(void* context, UCHAR *buffer, int& len)
 {
 	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
 	int sampleLength = len / sizeof(AudioSample3);
@@ -228,7 +229,7 @@ void FillData3(void* context, UCHAR *buffer, int& len)
 
 
 // Move data from sine table to USB device. This function is passed as a callback
-void FillData4(void* context, UCHAR *buffer, int& len)
+void FillSineData4(void* context, UCHAR *buffer, int& len)
 {
 	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
 	int sampleLength = len / sizeof(AudioSample4);
@@ -247,7 +248,7 @@ void FillData4(void* context, UCHAR *buffer, int& len)
 
 
 // Fill 3L, 3R bytes from wavfile into RAM (replaces sine table above)
-long FillglobalWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
+long FillWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
 	unsigned char temp[8];	// Temporary variable for reading a stereo sample from the wavfile
 	long readsamples = 0;
 	int m = 0;
@@ -305,7 +306,7 @@ long FillglobalWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPer
 
 
 // Fill 4L, 4R bytes from wavfile into RAM (replaces sine table above)
-long FillglobalWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
+long FillWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
 	unsigned char temp[8];	// Temporary variable for reading a stereo sample from the wavfile
 	long readsamples = 0;
 	int m = 0;
@@ -362,9 +363,33 @@ long FillglobalWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPer
 }
 
 
+// Move data from wav file RAM to USB device. This function is passed as a callback
+void FillWavData3(void* context, UCHAR *buffer, int& len)
+{
+	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
+	int sampleLength = len / sizeof(AudioSample3);
+
+	for(int i = 0; i < sampleLength; i++)
+	{
+		// Have we read past parsed end of wav file? Determine by counting audio samples
+		if(globalBufferIndex < globalParsedSamples) {
+			sampleBuff[i].left  =  globalWavBuffer3[globalBufferIndex].left;
+			sampleBuff[i].right =  globalWavBuffer3[globalBufferIndex].right;
+			globalBufferIndex++;
+		}
+		else {
+			sampleBuff[i].left  =  0;
+			sampleBuff[i].right =  0;
+		}
+
+	}
+	globalPacketCounter++;
+	if(globalPacketCounter > 0xFF)
+		globalPacketCounter = 0;
+}
+
 
 // Move data from wav file RAM to USB device. This function is passed as a callback
-//***
 void FillWavData4(void* context, UCHAR *buffer, int& len)
 {
 	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
@@ -372,11 +397,17 @@ void FillWavData4(void* context, UCHAR *buffer, int& len)
 
 	for(int i = 0; i < sampleLength; i++)
 	{
-		sampleBuff[i].left  =  globalSineBuffer[globalBufferIndex].left;
-		sampleBuff[i].right = globalSineBuffer[globalBufferIndex].right;
-		globalBufferIndex++;
-		if(globalBufferIndex >= 48) 
-			globalBufferIndex = 0;
+		// Have we read past parsed end of wav file? Determine by counting audio samples
+		if(globalBufferIndex < globalParsedSamples) {
+			sampleBuff[i].left  =  globalWavBuffer4[globalBufferIndex].left;
+			sampleBuff[i].right =  globalWavBuffer4[globalBufferIndex].right;
+			globalBufferIndex++;
+		}
+		else {
+			sampleBuff[i].left  =  0;
+			sampleBuff[i].right =  0;
+		}
+
 	}
 	globalPacketCounter++;
 	if(globalPacketCounter > 0xFF)
@@ -420,12 +451,12 @@ int main(int argc, char* argv[]) {
 		SubSlotSize = device.GetDACSubslotSize();
 		
 		if(SubSlotSize == 3) {
-			FillBuffer(globalSineBuffer, false);
-			device.SetDACCallback(FillData3, NULL);
+			FillSineBuffer(globalSineBuffer, false);
+			device.SetDACCallback(FillSineData3, NULL);
 		}
 		else if(SubSlotSize == 4) {
-			FillBuffer(globalSineBuffer, true);
-			device.SetDACCallback(FillData4, NULL);
+			FillSineBuffer(globalSineBuffer, true);
+			device.SetDACCallback(FillSineData4, NULL);
 		}
 		device.SetSampleRate(freq);
 		device.Start();
@@ -439,7 +470,6 @@ int main(int argc, char* argv[]) {
 		int SampleRate = 0;
 		int BytesPerSample = 0;
 		long NumSamples = 0;		// The number of samples in the wav file, independant of sample format
-		long ReadSamples = 0;		// Same as above
 		FILE * wavfile;
 
 		if (globalVerbose == 1)
@@ -453,9 +483,11 @@ int main(int argc, char* argv[]) {
 		}
 		SubSlotSize = device.GetDACSubslotSize();
 
-		// Open files
+		// Open wav files
 		for (int n=1; n<argc; n++) {
 			// Then do various checks on each wav file(s) to play
+			globalParsedSamples = 0;	// We haven't yet read anything from the wav file
+
 			wavfile = fopen(argv[n],"rb");	// fclose_s is recommended..
 			if (wavfile==NULL) {
 				printf ("\nWidgeTest: WARNING: File not found: %s\n",argv[n]);
@@ -471,39 +503,40 @@ int main(int argc, char* argv[]) {
 			if(SubSlotSize == 3) {
 				globalWavBuffer3 = new AudioSample3[NumSamples];
 
-				ReadSamples = FillglobalWavBuffer3 (globalWavBuffer3, wavfile, &BytesPerSample, &NumSamples);
+				globalParsedSamples = FillWavBuffer3 (globalWavBuffer3, wavfile, &BytesPerSample, &NumSamples);
 				if (globalVerbose == 1)
-					printf ("WidgeTest: ReadSamples=%d NumSamples=%d\n", ReadSamples, NumSamples);
+					printf ("WidgeTest: globalParsedSamples=%d NumSamples=%d\n", globalParsedSamples, NumSamples);
 
-				device.SetDACCallback(FillData3, NULL); // FIX: change
+				device.SetDACCallback(FillWavData3, NULL);
 			}
 			else if(SubSlotSize == 4) {
 				globalWavBuffer4 = new AudioSample4[NumSamples];
 
-				ReadSamples = FillglobalWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
+				globalParsedSamples = FillWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
 				if (globalVerbose == 1)
-					printf ("WidgeTest: ReadSamples=%d NumSamples=%d\n", ReadSamples, NumSamples);
+					printf ("WidgeTest: globalParsedSamples=%d NumSamples=%d\n", globalParsedSamples, NumSamples);
 
-				device.SetDACCallback(FillData4, NULL); // FIX: change
+				device.SetDACCallback(FillWavData4, NULL);
 			}
 
-			if (ReadSamples == NumSamples) {
+			if (globalParsedSamples == NumSamples) {
 				if (globalVerbose == 1)
 					printf ("WidgeTest: Wav file read into memory\n");
-				ReadSamples = 1;
 
 				// Now play the darn thing :-) 
 				device.SetSampleRate(SampleRate);
 				device.Start();
 				fclose (wavfile);
 				printf("WidgeTest: Press any key to continue...\n"); // FIX: also continue end after end of file
-				while (!_kbhit()) {}				// FIX: add file finished test, replaces _getch()
+				while (				// Wait for key press or end of file
+						( !_kbhit() ) &&
+						( globalBufferIndex < globalParsedSamples )
+					) {}
 				_getch();
 				device.Stop();
 			}
 			else {
 				printf ("WidgeTest: ERROR: Wav file not read into memory\n");
-				ReadSamples = 0;
 				return -1;
 			}
 
