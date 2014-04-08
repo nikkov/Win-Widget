@@ -9,7 +9,7 @@
 # warranty, and with no claim as to its suitability for any purpose.
 #
 #----------------------------------------------------------------------------
-# Contact: nikkov@gmail.com
+# Contact: nikkov@gmail.com, borge.strand@gmail.com
 #----------------------------------------------------------------------------
 */
 
@@ -44,6 +44,7 @@ struct AudioSample4
 	int right;
 };
 
+
 struct ThreeByteSample
 {
 	UCHAR sample[3];
@@ -61,73 +62,33 @@ struct ThreeByteSample
 	}
 };
 
+
 struct AudioSample3
 {
 	ThreeByteSample left;
 	ThreeByteSample right;
 };
 
-AudioSample4 dummybuffer[48];
-DWORD globalReadBuffer = 0;
+
+// Global variables keep this program running.
+
+// A fixed array for signal generator sine table
+AudioSample4 globalSineBuffer[48];
+
+// Memory pointers to Wav file data
+AudioSample3 * globalWavBuffer3;
+AudioSample4 * globalWavBuffer4;
+
+DWORD globalBufferIndex = 0;
 DWORD globalPacketCounter = 0;
 
-void FillBuffer(bool zoom)
-{
-	memset(dummybuffer, 0, 48*sizeof(AudioSample4));
-	for(int i = 0; i < 48; i++)
-	{
-		//dummybuffer[i].left = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
-		dummybuffer[i].left = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
-		dummybuffer[i].right = dummybuffer[i].left;
-
-		if(zoom)
-		{
-			dummybuffer[i].left = dummybuffer[i].left << 8;
-			dummybuffer[i].right = dummybuffer[i].right << 8;
-		}
-	}
-}
-
-void FillData4(void* context, UCHAR *buffer, int& len)
-{
-	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
-	int sampleLength = len / sizeof(AudioSample4);
-
-	for(int i = 0; i < sampleLength; i++)
-	{
-		sampleBuff[i].left =  dummybuffer[globalReadBuffer].left;
-		sampleBuff[i].right = dummybuffer[globalReadBuffer].right;
-		globalReadBuffer++;
-		if(globalReadBuffer >= 48) 
-			globalReadBuffer = 0;
-	}
-	globalPacketCounter++;
-	if(globalPacketCounter > 0xFF)
-		globalPacketCounter = 0;
-}
-
-void FillData3(void* context, UCHAR *buffer, int& len)
-{
-	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
-	int sampleLength = len / sizeof(AudioSample3);
-
-	for(int i = 0; i < sampleLength; i++)
-	{
-		sampleBuff[i].left =  dummybuffer[globalReadBuffer].left;
-		sampleBuff[i].right = dummybuffer[globalReadBuffer].right;
-		globalReadBuffer++;
-		if(globalReadBuffer >= 48) 
-			globalReadBuffer = 0;
-	}
-	globalPacketCounter++;
-	if(globalPacketCounter > 0xFF)
-		globalPacketCounter = 0;
-}
+// Assume we're running in verbose mode until "-v" can be specified on command line
+DWORD globalVerbose = 1; 
 
 
 // Parse a wav file header and return file parameters
 // See https://ccrma.stanford.edu/courses/422/projects/WaveFormat/
-int parsewavheader (FILE* wavfile, int* NumChannels, int* SampleRate, int* BytesPerSample, long* NumSamples) {
+int ParseWavHeader (FILE* wavfile, int* NumChannels, int* SampleRate, int* BytesPerSample, long* NumSamples) {
 #define WAVHEADER_L 44				// Length of standard wav file header
 #define IG 0xAB						// A byte which doesn't occur elsewhere in header
 
@@ -154,7 +115,7 @@ int parsewavheader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	int n = fread (readwavheader, 1, WAVHEADER_L, wavfile); // Try to read 44 header bytes
 
 	if (n != WAVHEADER_L) {
-		printf ("ERROR: Could not read %d bytes wav file header\n", WAVHEADER_L);
+		printf ("WidgeTest: ERROR: Could not read %d bytes wav file header\n", WAVHEADER_L);
 		return 0;
 	}
 
@@ -163,7 +124,7 @@ int parsewavheader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	while ( ( (readwavheader[n] == wavheader[n]) || (wavheader[n] == IG) ) && (n < WAVHEADER_L) ) n++;
 
 	if (n != WAVHEADER_L) {
-		printf ("ERROR: wav file header error at position %d\n", n);
+		printf ("WidgeTest: ERROR: wav file header error at position %d\n", n);
 		return 0;
 	}
 
@@ -180,48 +141,50 @@ int parsewavheader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	double Duration = *NumSamples; Duration /= *SampleRate;
 
 	// Print parameters
-	printf ("ChunkSize = %d\n", ChunkSize);
-	printf ("NumChannels = %d\n", *NumChannels);
-	printf ("SampleRate = %d\n", *SampleRate);
-	printf ("ByteRate = %d\n", ByteRate);
-	printf ("BlockAlign = %d\n", BlockAlign);
-	printf ("BytesPerSample = %d\n", *BytesPerSample); // Bytes per MONO sample, *2 for stereo
-	printf ("SubChunk2Size = %d\n", SubChunk2Size);
-	printf ("NumSamples = %d\n", *NumSamples);
-	printf ("Duration = %4.3fs\n", Duration);
+	if (globalVerbose == 1) {
+		printf ("WidgeTest: ChunkSize = %d\n", ChunkSize);
+		printf ("WidgeTest: NumChannels = %d\n", *NumChannels);
+		printf ("WidgeTest: SampleRate = %d\n", *SampleRate);
+		printf ("WidgeTest: ByteRate = %d\n", ByteRate);
+		printf ("WidgeTest: BlockAlign = %d\n", BlockAlign);
+		printf ("WidgeTest: BytesPerSample = %d\n", *BytesPerSample); // Bytes per MONO sample, *2 for stereo
+		printf ("WidgeTest: SubChunk2Size = %d\n", SubChunk2Size);
+		printf ("WidgeTest: NumSamples = %d\n", *NumSamples);
+		printf ("WidgeTest: Duration = %4.3fs\n", Duration);
+	}
 
 	// Full error checking
 	n = 1; // Assuming a clean return. But report all found errors before returning
 
 	if (SubChunk2Size + 36 != ChunkSize) {
-		printf ("ERROR: SubChunk2Size, ChunkSize mismatch %d+36 != %d\n", SubChunk2Size, ChunkSize);
+		printf ("WidgeTest: ERROR: SubChunk2Size, ChunkSize mismatch %d+36 != %d\n", SubChunk2Size, ChunkSize);
 		n = 0;
 	}
 
 	if (*NumChannels != 2) {
-		printf ("ERROR: Only 2-channel wav is accepted, not the detected %d-channel.\n", *NumChannels);
+		printf ("WidgeTest: ERROR: Only 2-channel wav is accepted, not the detected %d-channel.\n", *NumChannels);
 		n = 0;
 	}
 
 	if ( (*SampleRate != 44100) && (*SampleRate != 48000) && 
 		 (*SampleRate != 88200) && (*SampleRate != 96000) &&
 		 (*SampleRate != 176400) && (*SampleRate != 192000) ) {
-		printf ("ERROR: Only 44.1/48/88.2/96/176.4/192ksps accepted, not the detected %d.\n", *SampleRate);
+		printf ("WidgeTest: ERROR: Only 44.1/48/88.2/96/176.4/192ksps accepted, not the detected %d.\n", *SampleRate);
 		n = 0 ;
 	}
 
 	if (ByteRate != *SampleRate * *NumChannels * *BytesPerSample) {
-		printf ("ERROR: Mismatch between ByteRate, SampleRate, NumChannels, BitsPerSample\n");
+		printf ("WidgeTest: ERROR: Mismatch between ByteRate, SampleRate, NumChannels, BitsPerSample\n");
 		n = 0;
 	}
 
 	if (BlockAlign != *NumChannels * *BytesPerSample) {
-		printf ("ERROR: Mismatch between BlockAlign, NumChannels, BitsPerSample\n");
+		printf ("WidgeTest: ERROR: Mismatch between BlockAlign, NumChannels, BitsPerSample\n");
 		n = 0;
 	}
 
 	if ( (*BytesPerSample != 2) && (*BytesPerSample != 3) && (*BytesPerSample != 4) ) {
-		printf ("ERROR: Only 2/3/4 bytes per mono sample accepted, not the detected %d.\n", *BytesPerSample);
+		printf ("WidgeTest: ERROR: Only 2/3/4 bytes per mono sample accepted, not the detected %d.\n", *BytesPerSample);
 		n = 0;
 	}
 
@@ -229,20 +192,77 @@ int parsewavheader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 }
 
 
-// Fill 3L, 3R bytes from wavfile
-long fillwavbuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
+// Generate a sine table of 48 32-bit entries
+void FillBuffer(AudioSample4* sinebuffer, bool zoom)
+{
+	memset(sinebuffer, 0, 48*sizeof(AudioSample4));
+	for(int i = 0; i < 48; i++) {
+		sinebuffer[i].left  = (int)(0x1FFFFF*sin(2.0*3.14159265358979323846*(double)i/48.));
+		sinebuffer[i].right = sinebuffer[i].left;
+
+		if(zoom) {
+			sinebuffer[i].left  = sinebuffer[i].left << 8;
+			sinebuffer[i].right = sinebuffer[i].right << 8;
+		}
+	}
+}
+
+
+// Move data from sine table to USB device. This function is passed as a callback
+void FillData3(void* context, UCHAR *buffer, int& len)
+{
+	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
+	int sampleLength = len / sizeof(AudioSample3);
+
+	for(int i = 0; i < sampleLength; i++) {
+		sampleBuff[i].left  = globalSineBuffer[globalBufferIndex].left;
+		sampleBuff[i].right = globalSineBuffer[globalBufferIndex].right;
+		globalBufferIndex++;
+		if(globalBufferIndex >= 48) 
+			globalBufferIndex = 0;
+	}
+	globalPacketCounter++;
+	if(globalPacketCounter > 0xFF)
+		globalPacketCounter = 0;
+}
+
+
+// Move data from sine table to USB device. This function is passed as a callback
+void FillData4(void* context, UCHAR *buffer, int& len)
+{
+	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
+	int sampleLength = len / sizeof(AudioSample4);
+
+	for(int i = 0; i < sampleLength; i++) {
+		sampleBuff[i].left  = globalSineBuffer[globalBufferIndex].left;
+		sampleBuff[i].right = globalSineBuffer[globalBufferIndex].right;
+		globalBufferIndex++;
+		if(globalBufferIndex >= 48) 
+			globalBufferIndex = 0;
+	}
+	globalPacketCounter++;
+	if(globalPacketCounter > 0xFF)
+		globalPacketCounter = 0;
+}
+
+
+// Fill 3L, 3R bytes from wavfile into RAM (replaces sine table above)
+long FillglobalWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
 	unsigned char temp[8];	// Temporary variable for reading a stereo sample from the wavfile
 	long readsamples = 0;
+	int m = 0;
 
 	if (*BytesPerSample == 2) {
 		for (long n=0; n<*NumSamples; n++) {
-			if (fread(temp, 1, 4, wavfile) == 4) { 		// 16 bits -> 24 bits stereo
+			m = fread(temp, 1, 4, wavfile);
+			if (m == 4) { 		// 16 bits -> 24 bits stereo
 				wavbuffer[n].left  = (temp[0]<<8) + (temp[1]<<16);
 				wavbuffer[n].right = (temp[2]<<8) + (temp[3]<<16);
 				readsamples++;
 			}
 			else {
-				printf ("a\n");
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
 		}
@@ -250,13 +270,15 @@ long fillwavbuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample
 
 	else if (*BytesPerSample == 3) {
 		for (long n=0; n<*NumSamples; n++) {
-			if (fread(temp, 1, 6, wavfile) == 6) { 		// 24 bits -> 24 bits stereo. Can we do simple copy?
+			m = fread(temp, 1, 6, wavfile);
+			if (m == 6) { 		// 24 bits -> 24 bits stereo. Can we do simple copy?
 				wavbuffer[n].left  = (temp[0]) + (temp[1]<<8) + (temp[2]<<16);
 				wavbuffer[n].right = (temp[3]) + (temp[4]<<8) + (temp[5]<<16);
 				readsamples++;
 			}
 			else {
-				printf ("b\n");
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
 		}
@@ -264,13 +286,15 @@ long fillwavbuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample
 
 	else if (*BytesPerSample == 4) {
 		for (long n=0; n<*NumSamples; n++) {
-			if (fread(temp, 1, 8, wavfile) == 8) {		// 32 bits -> 24 bits stereo. FIX: add dither!
+			m = fread(temp, 1, 8, wavfile);
+			if (m == 8) {		// 32 bits -> 24 bits stereo. FIX: add optional dither!
 				wavbuffer[n].left  = (temp[1]) + (temp[2]<<8) + (temp[3]<<16);
 				wavbuffer[n].right = (temp[5]) + (temp[6]<<8) + (temp[7]<<16);
 				readsamples++;
 			}
 			else {
-				printf ("c\n");
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
 		}
@@ -280,8 +304,8 @@ long fillwavbuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample
 }
 
 
-// Fill 3L, 3R bytes from wavfile
-long fillwavbuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
+// Fill 4L, 4R bytes from wavfile into RAM (replaces sine table above)
+long FillglobalWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample, long* NumSamples) {
 	unsigned char temp[8];	// Temporary variable for reading a stereo sample from the wavfile
 	long readsamples = 0;
 	int m = 0;
@@ -295,7 +319,8 @@ long fillwavbuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				printf ("d %d, %d, %d", n, readsamples, m);
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
 		}
@@ -303,13 +328,15 @@ long fillwavbuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 
 	else if (*BytesPerSample == 3) {
 		for (long n=0; n<*NumSamples; n++) {
-			if (fread(temp, 1, 6, wavfile) == 6) {		// 24 bits -> 32 bits stereo.
+			m = fread(temp, 1, 6, wavfile);
+			if (m == 6) {		// 24 bits -> 32 bits stereo.
 				wavbuffer[n].left  = (temp[0]<<8) + (temp[1]<<16) + (temp[2]<<24);
 				wavbuffer[n].right = (temp[3]<<8) + (temp[4]<<16) + (temp[5]<<24);
 				readsamples++;
 			}
 			else {
-				printf ("e\n");
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
 		}
@@ -317,13 +344,15 @@ long fillwavbuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 
 	else if (*BytesPerSample == 4) {
 		for (long n=0; n<*NumSamples; n++) {
-			if (fread(temp, 1, 8, wavfile) == 8) { 		// 32 bits -> 32 bits stereo.  Can we do simple copy?
+			m = fread(temp, 1, 8, wavfile);
+			if (m == 8) { 		// 32 bits -> 32 bits stereo.  Can we do simple copy?
 				wavbuffer[n].left  = (temp[0]) + (temp[1]<<8) + (temp[2]<<16) + (temp[3]<<24);
 				wavbuffer[n].right = (temp[4]) + (temp[5]<<8) + (temp[6]<<16) + (temp[7]<<24);
 				readsamples++;
 			}
 			else {
-				printf ("f\n");
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
 		}
@@ -333,10 +362,33 @@ long fillwavbuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 }
 
 
+
+// Move data from wav file RAM to USB device. This function is passed as a callback
+//***
+void FillWavData4(void* context, UCHAR *buffer, int& len)
+{
+	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
+	int sampleLength = len / sizeof(AudioSample4);
+
+	for(int i = 0; i < sampleLength; i++)
+	{
+		sampleBuff[i].left  =  globalSineBuffer[globalBufferIndex].left;
+		sampleBuff[i].right = globalSineBuffer[globalBufferIndex].right;
+		globalBufferIndex++;
+		if(globalBufferIndex >= 48) 
+			globalBufferIndex = 0;
+	}
+	globalPacketCounter++;
+	if(globalPacketCounter > 0xFF)
+		globalPacketCounter = 0;
+}
+
+
 int main(int argc, char* argv[]) {
 
 	int freq;
 	int mode; // BSB 20121007 0:signal generator 1:wav file player
+	int SubSlotSize = 0;
 
 	if (argc == 1) {	// No arguments
 		freq = 48000;	// Default sampling frequency
@@ -354,110 +406,113 @@ int main(int argc, char* argv[]) {
 	else				// >1 argument, run as wav file player
 		mode = 1;		// Run as wav file player
 
+
 	if (mode == 0) {	// signal generator
-		printf("Running as signal generator.\n");
+		if (globalVerbose == 1)
+			printf("WidgeTest: Running as signal generator.\n");
 
 		// First check for valid playback device
 		USBAudioDevice device(true);
 		if (!device.InitDevice()) {
-			printf ("ERROR: UAC2 Audio device not found\n");
-//	offline		return -1;
+			printf ("WidgeTest: ERROR: UAC2 Audio device not found\n");
+			return -1;
 		}
+		SubSlotSize = device.GetDACSubslotSize();
 		
-		if(device.GetDACSubslotSize() == 3) {
-			FillBuffer(false);
+		if(SubSlotSize == 3) {
+			FillBuffer(globalSineBuffer, false);
 			device.SetDACCallback(FillData3, NULL);
 		}
-		else if(device.GetDACSubslotSize() == 4) {
-			FillBuffer(true);
+		else if(SubSlotSize == 4) {
+			FillBuffer(globalSineBuffer, true);
 			device.SetDACCallback(FillData4, NULL);
 		}
 		device.SetSampleRate(freq);
 		device.Start();
-		printf("Press any key to stop...\n");
+		printf("WidgeTest: Press any key to stop...\n");
 		_getch();
 		device.Stop();
 	}
 
 	else if (mode == 1) { // wav file player
-		AudioSample3 * wavbuffer3; // Memory pointers for wav file data access, make global!
-		AudioSample4 * wavbuffer4;
-
 		int NumChannels = 0;
 		int SampleRate = 0;
 		int BytesPerSample = 0;
-		long NumSamples = 0;
-		long ReadSamples = 0;
+		long NumSamples = 0;		// The number of samples in the wav file, independant of sample format
+		long ReadSamples = 0;		// Same as above
 		FILE * wavfile;
-		int SubSlotSize = 0;
 
-		printf("Running as wav file player.\n");
+		if (globalVerbose == 1)
+			printf("WidgeTest: Running as wav file player.\n");
 
 		// First check for valid playback device
 		USBAudioDevice device(true);
 		if (!device.InitDevice()) {
-			printf ("ERROR: UAC2 Audio device not found\n");
-//	offline		return -1;
+			printf ("WidgeTest: ERROR: UAC2 Audio device not found\n");
+			return -1;
 		}
+		SubSlotSize = device.GetDACSubslotSize();
 
 		// Open files
 		for (int n=1; n<argc; n++) {
-			// Then do various checks on wav file(s) to play
+			// Then do various checks on each wav file(s) to play
 			wavfile = fopen(argv[n],"rb");	// fclose_s is recommended..
 			if (wavfile==NULL) {
-				printf ("ERROR: File not found: %s\n",argv[n]);
+				printf ("\nWidgeTest: WARNING: File not found: %s\n",argv[n]);
 				continue;
 			}
 
-			printf ("\nFound file: %s\n",argv[n]);
-			if (!parsewavheader (wavfile, &NumChannels, &SampleRate, &BytesPerSample, &NumSamples))
-				return -1;	// Error message reported in above function
+			if (globalVerbose == 1)
+				printf ("\nWidgeTest: Found file: %s\n",argv[n]);
 
-//	offline		SubSlotSize = device.GetDACSubslotSize();
-			SubSlotSize = 4;
+			if (!ParseWavHeader (wavfile, &NumChannels, &SampleRate, &BytesPerSample, &NumSamples))
+				continue;
 
 			if(SubSlotSize == 3) {
-				wavbuffer3 = new AudioSample3[NumSamples];
+				globalWavBuffer3 = new AudioSample3[NumSamples];
 
-				ReadSamples = fillwavbuffer3 (wavbuffer3, wavfile, &BytesPerSample, &NumSamples);
-				printf ("%d %d\n", ReadSamples, NumSamples);
+				ReadSamples = FillglobalWavBuffer3 (globalWavBuffer3, wavfile, &BytesPerSample, &NumSamples);
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ReadSamples=%d NumSamples=%d\n", ReadSamples, NumSamples);
 
-				FillBuffer(false); // FIX: change
 				device.SetDACCallback(FillData3, NULL); // FIX: change
 			}
 			else if(SubSlotSize == 4) {
-				wavbuffer4 = new AudioSample4[NumSamples];
+				globalWavBuffer4 = new AudioSample4[NumSamples];
 
-				ReadSamples = fillwavbuffer4 (wavbuffer4, wavfile, &BytesPerSample, &NumSamples);
-				printf ("%d %d\n", ReadSamples, NumSamples);
+				ReadSamples = FillglobalWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
+				if (globalVerbose == 1)
+					printf ("WidgeTest: ReadSamples=%d NumSamples=%d\n", ReadSamples, NumSamples);
 
-				FillBuffer(true); // FIX: change
 				device.SetDACCallback(FillData4, NULL); // FIX: change
 			}
 
 			if (ReadSamples == NumSamples) {
-				printf ("Wav file read into memory\n");
+				if (globalVerbose == 1)
+					printf ("WidgeTest: Wav file read into memory\n");
 				ReadSamples = 1;
 
 				// Now play the darn thing :-) 
 				device.SetSampleRate(SampleRate);
 				device.Start();
 				fclose (wavfile);
-				printf("Press any key to stop...\n"); // FIX: also continue at end of file
-				device.Stop();
+				printf("WidgeTest: Press any key to continue...\n"); // FIX: also continue end after end of file
 				while (!_kbhit()) {}				// FIX: add file finished test, replaces _getch()
+				_getch();
+				device.Stop();
 			}
 			else {
-				printf ("ERROR: Wav file not read into memory\n");
+				printf ("WidgeTest: ERROR: Wav file not read into memory\n");
 				ReadSamples = 0;
+				return -1;
 			}
 
 			if(SubSlotSize == 3)
-				delete [] wavbuffer3;
-			else if(SubSlotSize == 3)
-				delete [] wavbuffer4;
-		}
-	}
+				delete [] globalWavBuffer3;
+			else if(SubSlotSize == 4)
+				delete [] globalWavBuffer4;
+		} // for n wav files
+	} // main()
 
 	_CrtDumpMemoryLeaks();
 	return 0;
