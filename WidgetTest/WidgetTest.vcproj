@@ -137,7 +137,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="libusbK.lib uaclib.lib"
+				AdditionalDependencies="libusbK.lib uaclib.lib setargv.obj"
 				LinkIncremental="1"
 				AdditionalLibraryDirectories="&quot;..\libusbK-dev-kit\bin\lib\x86&quot;;&quot;.\Release&quot;"
 				GenerateDebugInformation="true"
