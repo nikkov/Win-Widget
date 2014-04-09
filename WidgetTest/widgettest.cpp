@@ -557,3 +557,16 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
+/*
+Todo:
+
+- Don't start and stop device for each song
+- Test above with changing sample rates, start/stop with different sample rate only?
+- Smaller memory footprint
+- Determine how callback is called (thread?)
+- Measure and optimize lateny
+  - Differential CPU time measurement in callback
+  - Preventing swapping of memory
+  - Make callback thread(?) more real-time-y
+
+*/
