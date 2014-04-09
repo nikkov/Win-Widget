@@ -414,45 +414,12 @@ void FillWavData4(void* context, UCHAR *buffer, int& len)
 }
 
 
-// Move zeros to USB device. This function is passed as a callback
-void FillZeroData3(void* context, UCHAR *buffer, int& len)
-{
-	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
-	int sampleLength = len / sizeof(AudioSample3);
-
-	for(int i = 0; i < sampleLength; i++)
-	{
-		sampleBuff[i].left  =  0;
-		sampleBuff[i].right =  0;
-	}
-	globalPacketCounter++;
-	if(globalPacketCounter > 0xFF)
-		globalPacketCounter = 0;
-}
-
-
-// Move zeros to USB device. This function is passed as a callback
-void FillZeroData4(void* context, UCHAR *buffer, int& len)
-{
-	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
-	int sampleLength = len / sizeof(AudioSample4);
-
-	for(int i = 0; i < sampleLength; i++)
-	{
-		sampleBuff[i].left  =  0;
-		sampleBuff[i].right =  0;
-	}
-	globalPacketCounter++;
-	if(globalPacketCounter > 0xFF)
-		globalPacketCounter = 0;
-}
-
-
 int main(int argc, char* argv[]) {
 
 	int freq;
 	int mode; // BSB 20121007 0:signal generator 1:wav file player
 	int SubSlotSize = 0;
+	DWORD tempNumParsedSamples;
 
 	if (argc == 1) {	// No arguments
 		freq = 48000;	// Default sampling frequency
@@ -517,19 +484,16 @@ int main(int argc, char* argv[]) {
 		}
 		SubSlotSize = device.GetDACSubslotSize();
 
-		// Starting out with default sample rate and mute
+		// Set the data filling callback function. It should initially output zeros 
+		// and NOT touch the not-yet-created global buffers.
 		if(SubSlotSize == 3)
-			device.SetDACCallback(FillZeroData3, NULL);
+			device.SetDACCallback(FillWavData3, NULL);
 		else if(SubSlotSize == 4)
-			device.SetDACCallback(FillZeroData4, NULL);
+			device.SetDACCallback(FillWavData4, NULL);
 
-		// Open wav files
+		// Open a sequence of wav files
 		for (int n=1; n<argc; n++) {
-			// Then do various checks on each wav file(s) to play
-			globalNumParsedSamples = 0;	// We haven't yet read anything from the wav file
-			globalBufferIndex = 0;
-
-			wavfile = fopen(argv[n],"rb");	// fopen_s is recommended..
+			wavfile = fopen(argv[n],"rb");				// fopen_s is recommended...
 			if (wavfile==NULL) {
 				printf ("\nWidgetTest: WARNING: File not found: %s\n",argv[n]);
 				continue;
@@ -539,74 +503,81 @@ int main(int argc, char* argv[]) {
 				printf ("\nWidgetTest: Found file: %s\n",argv[n]);
 
 			if (!ParseWavHeader (wavfile, &NumChannels, &SampleRate, &BytesPerSample, &NumSamples))
-				continue;		// Function does its own error reporting
+				continue;								// Function does its own error reporting
 
+			if (globalVerbose == 1)
+				printf ("WidgetTest: Start reading wav file\n");
+
+			// Don't yet touch globalNumParsedSamples. Playback of nonzero audio data 
+			// starts when it becomes nonzero!
 			if(SubSlotSize == 3) {
 				globalWavBuffer3 = new AudioSample3[NumSamples];
-
-				globalNumParsedSamples = FillWavBuffer3 (globalWavBuffer3, wavfile, &BytesPerSample, &NumSamples);
+				tempNumParsedSamples = FillWavBuffer3 (globalWavBuffer3, wavfile, &BytesPerSample, &NumSamples);
 				if (globalVerbose == 1)
 					printf ("WidgetTest: globalNumParsedSamples=%d NumSamples=%d\n", globalNumParsedSamples, NumSamples);
 			}
 			else if(SubSlotSize == 4) {
 				globalWavBuffer4 = new AudioSample4[NumSamples];
-				globalNumParsedSamples = FillWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
+				tempNumParsedSamples = FillWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
 				if (globalVerbose == 1)
 					printf ("WidgetTest: globalNumParsedSamples=%d NumSamples=%d\n", globalNumParsedSamples, NumSamples);
 			}
 
 			fclose (wavfile);
 
-			// Now play the darn thing :-) 
-			if (globalNumParsedSamples == NumSamples) {
+			if (tempNumParsedSamples == NumSamples) {
 				if (globalVerbose == 1)
-					printf ("WidgetTest: Wav file read into memory\n");
+					printf ("WidgetTest: End reading wav file\n");
 
 				if ( (prevSampleRate != SampleRate) && (prevSampleRate != 0) ) {
 					device.Stop();						// When on >1st wav file, and with new s-rate, first stop device
-					printf ("STOP \n");
+					if (globalVerbose == 1)
+						printf("WidgetTest: device.Stop()\n");
 				}
-
-				// Reconnect to globalWavBuffer3/4 now that one of them is filled up
-				if(SubSlotSize == 3)
-					device.SetDACCallback(FillWavData3, NULL);
-				else if(SubSlotSize == 4)
-					device.SetDACCallback(FillWavData4, NULL);
 
 				if (prevSampleRate != SampleRate) {		// With 1st wav file, prevSampleRate==0. For 1st wav file and
 					device.SetSampleRate(SampleRate);	// sample rate changes, change the rate and restart device
 					device.Start();
-					printf ("START \n");
+					if (globalVerbose == 1)
+						printf("WidgetTest: device.SetSampleRate() and device.Start()\n");
 				}
 
-				prevSampleRate = SampleRate;
+				prevSampleRate = SampleRate;			// Record sample rate changes
+
+				// Now play the darn thing :-) 
+				// It's the last action before the wait loop
+				globalNumParsedSamples = tempNumParsedSamples; 
 
 				// Wait loop while music hopefully plays
 				printf("WidgetTest: Press any key to continue...\n"); // FIX: also continue end after end of file
-				while	(				// Wait for key press or end of file
+				while	(								// Wait for key press or end of file
 						( !_kbhit() ) &&
 						( globalBufferIndex < globalNumParsedSamples )
 						) {
-					Sleep(50);			// Parameter is ms
+					Sleep(50);							// Parameter is ms
 				}
+				
+				// Reaching end of samples will result in zero-data playback, 
+				// even without below 2 lines of code. But with below 2 lines,
+				// reaching end or keypress will put callback function into zeros mode
+				globalNumParsedSamples = 0;				// We haven't yet read anything from the next wav file
+				globalBufferIndex = 0;					// This instructs FilWavData? to dump zeros
+
 				if (_kbhit())
 					_getch();
 
-
-
-				// globalWavBuffer will be deleted below, mute in the meantime
-				if(SubSlotSize == 3)
-					device.SetDACCallback(FillZeroData3, NULL);
-				else if(SubSlotSize == 4)
-					device.SetDACCallback(FillZeroData4, NULL);
-
 				printf("WidgetTest: globalBufferIndex=%d globalNumParsedSamples=%d\n", globalBufferIndex, globalNumParsedSamples);
-			}
+			} // globalNumParsedSamples OK
 			else {
 				printf ("WidgetTest: ERROR: Wav file not read into memory\n");
 				return -1;
 			}
 
+			// Replicate here for good measure
+			globalNumParsedSamples = 0;					// We haven't yet read anything from the next wav file
+			globalBufferIndex = 0;						// This instructs FilWavData? to dump zeros
+
+			// Is it now safe to delete globalWavBuffer? So it seems from basic tests.
 			if(SubSlotSize == 3)
 				delete [] globalWavBuffer3;
 			else if(SubSlotSize == 4)
