@@ -466,6 +466,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	else if (mode == 1) { // wav file player
+		int paused;
+		char command;
 		int NumChannels = 0;
 		int SampleRate = 0;
 		int prevSampleRate = 0;
@@ -513,15 +515,13 @@ int main(int argc, char* argv[]) {
 			if(SubSlotSize == 3) {
 				globalWavBuffer3 = new AudioSample3[NumSamples];
 				tempNumParsedSamples = FillWavBuffer3 (globalWavBuffer3, wavfile, &BytesPerSample, &NumSamples);
-				if (globalVerbose == 1)
-					printf ("WidgetTest: globalNumParsedSamples=%d NumSamples=%d\n", globalNumParsedSamples, NumSamples);
 			}
 			else if(SubSlotSize == 4) {
 				globalWavBuffer4 = new AudioSample4[NumSamples];
 				tempNumParsedSamples = FillWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
-				if (globalVerbose == 1)
-					printf ("WidgetTest: globalNumParsedSamples=%d NumSamples=%d\n", globalNumParsedSamples, NumSamples);
 			}
+			if (globalVerbose == 1)
+				printf ("WidgetTest: tempNumParsedSamples=%d NumSamples=%d\n", tempNumParsedSamples, NumSamples);
 
 			fclose (wavfile);
 
@@ -546,17 +546,43 @@ int main(int argc, char* argv[]) {
 
 				// Now play the darn thing :-) 
 				// It's the last action before the wait loop
+				paused = 0;
 				globalNumParsedSamples = tempNumParsedSamples; 
 
 				// Wait loop while music hopefully plays
-				printf("WidgetTest: Press any key to continue...\n"); // FIX: also continue end after end of file
-				while	(								// Wait for key press or end of file
-						( !_kbhit() ) &&
-						( globalBufferIndex < globalNumParsedSamples )
-						) {
-					Sleep(50);							// Parameter is ms
+				if (globalVerbose == 1)
+					printf("WidgetTest: 'p' (un)pauses, other key terminates track\n"); 
+
+				while ( (globalBufferIndex < globalNumParsedSamples) || (paused) ) {
+					Sleep(50);							// ms sleep between keyboard polls / termination checks
+
+					if (_kbhit()) {
+						command = _getch();
+						printf ("WidgetTest: Got command '%c'\n", command);
+
+						if (command == 'p') {			// Toggle pause mode
+							if (paused) {
+								printf ("WidgetTest: Un-pausing\n");
+								paused = 0;				// Un-pause, restore index
+								globalNumParsedSamples = tempNumParsedSamples;
+							}
+							else {
+								printf ("WidgetTest: Pausing\n");
+								paused = 1;				// Pause, back up index to recycled variable
+								tempNumParsedSamples = globalNumParsedSamples;
+								globalNumParsedSamples = 0;	// Cause zeros playback
+							}
+						}
+						else {							// All other commands terminate playback of current file
+							printf ("WidgetTest: Terminating track\n");
+							paused = 0;					// Un-pause at termination
+							globalNumParsedSamples = 0;	// We haven't yet read anything from the next wav file
+							globalBufferIndex = 0;		// This instructs FilWavData? to dump zeros
+						}
+
+					}
 				}
-				
+
 				// Reaching end of samples will result in zero-data playback, 
 				// even without below 2 lines of code. But with below 2 lines,
 				// reaching end or keypress will put callback function into zeros mode
@@ -595,13 +621,12 @@ int main(int argc, char* argv[]) {
 /*
 Todo:
 
-- Don't start and stop device for each song
-- Test above with changing sample rates, start/stop with different sample rate only?
 - Smaller memory footprint
-- Determine how callback is called (thread?)
+- Determine how callback is called (thread?) See mail from Nikolay
 - Measure and optimize lateny
   - Differential CPU time measurement in callback
   - Preventing swapping of memory
   - Make callback thread(?) more real-time-y
+- Improve on USB feedback poll rate understanding
 
 */
