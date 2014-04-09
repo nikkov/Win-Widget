@@ -391,6 +391,9 @@ void FillWavData3(void* context, UCHAR *buffer, int& len)
 // Move data from wav file RAM to USB device. This function is passed as a callback
 void FillWavData4(void* context, UCHAR *buffer, int& len)
 {
+	unsigned __int64 CPUtime;
+	static unsigned __int64 prevCPUtime;
+
 	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
 	int sampleLength = len / sizeof(AudioSample4);
 
@@ -411,6 +414,9 @@ void FillWavData4(void* context, UCHAR *buffer, int& len)
 	globalPacketCounter++;
 	if(globalPacketCounter > 0xFF)
 		globalPacketCounter = 0;
+
+	CPUtime = __rdtsc();
+	// Elaborate on CPU time differentials..
 }
 
 
@@ -551,7 +557,7 @@ int main(int argc, char* argv[]) {
 
 				// Wait loop while music hopefully plays
 				if (globalVerbose == 1)
-					printf("WidgetTest: 'p' (un)pauses, other key terminates track\n"); 
+					printf("WidgetTest: 'p' (un)pauses, 'r' replays track, other key terminates track\n"); 
 
 				while ( (globalBufferIndex < globalNumParsedSamples) || (paused) ) {
 					Sleep(50);							// ms sleep between keyboard polls / termination checks
@@ -573,6 +579,11 @@ int main(int argc, char* argv[]) {
 								globalNumParsedSamples = 0;	// Cause zeros playback
 							}
 						}
+
+						else if (command == 'r') {		// Replay track in RAM
+							globalBufferIndex = 0;
+						}
+
 						else {							// All other commands terminate playback of current file
 							printf ("WidgetTest: Terminating track\n");
 							paused = 0;					// Un-pause at termination
