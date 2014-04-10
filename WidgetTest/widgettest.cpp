@@ -18,6 +18,7 @@
 #include <crtdbg.h>
 #include <conio.h>
 #include <math.h>
+#include <string.h>
 
 #include "USBAudioDevice.h"
 #include "tlist.h"
@@ -82,13 +83,15 @@ DWORD globalNumParsedSamples = 0;		// The number of samples read in from the wav
 DWORD globalBufferIndex = 0;
 DWORD globalPacketCounter = 0;
 
-DWORD globalCPUTimeMonitor = 1;			// Monitor CPU time spent in callback function
+DWORD globalCPUTimeMonitor = 0;			// Monitor CPU time spent in callback function
 unsigned __int64 globalCPUTimeMax, globalCPUTimeMin, globalCPUTimeLast;
 
 
-// Assume we're running in verbose mode until "-v" can be specified on command line
-DWORD globalVerbose = 1; 
+// Assume we're running in verbose mode
+DWORD globalVerbose = 0; 
 
+// Assume we're not running in silent mode
+DWORD globalSilent = 0; 
 
 // Parse a wav file header and return file parameters
 // See https://ccrma.stanford.edu/courses/422/projects/WaveFormat/
@@ -119,7 +122,8 @@ int ParseWavHeader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	int n = fread (readwavheader, 1, WAVHEADER_L, wavfile); // Try to read 44 header bytes
 
 	if (n != WAVHEADER_L) {
-		printf ("WidgetTest: ERROR: Could not read %d bytes wav file header\n", WAVHEADER_L);
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: Could not read %d bytes wav file header\n", WAVHEADER_L);
 		return 0;
 	}
 
@@ -128,7 +132,8 @@ int ParseWavHeader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	while ( ( (readwavheader[n] == wavheader[n]) || (wavheader[n] == IG) ) && (n < WAVHEADER_L) ) n++;
 
 	if (n != WAVHEADER_L) {
-		printf ("WidgetTest: ERROR: wav file header error at position %d\n", n);
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: wav file header error at position %d\n", n);
 		return 0;
 	}
 
@@ -145,7 +150,7 @@ int ParseWavHeader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	double Duration = *NumSamples; Duration /= *SampleRate;
 
 	// Print parameters
-	if (globalVerbose == 1) {
+	if (globalVerbose) {
 		printf ("WidgetTest: ChunkSize = %d\n", ChunkSize);
 		printf ("WidgetTest: NumChannels = %d\n", *NumChannels);
 		printf ("WidgetTest: SampleRate = %d\n", *SampleRate);
@@ -161,34 +166,40 @@ int ParseWavHeader (FILE* wavfile, int* NumChannels, int* SampleRate, int* Bytes
 	n = 1; // Assuming a clean return. But report all found errors before returning
 
 	if (SubChunk2Size + 36 != ChunkSize) {
-		printf ("WidgetTest: ERROR: SubChunk2Size, ChunkSize mismatch %d+36 != %d\n", SubChunk2Size, ChunkSize);
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: SubChunk2Size, ChunkSize mismatch %d+36 != %d\n", SubChunk2Size, ChunkSize);
 		n = 0;
 	}
 
 	if (*NumChannels != 2) {
-		printf ("WidgetTest: ERROR: Only 2-channel wav is accepted, not the detected %d-channel.\n", *NumChannels);
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: Only 2-channel wav is accepted, not the detected %d-channel.\n", *NumChannels);
 		n = 0;
 	}
 
 	if ( (*SampleRate != 44100) && (*SampleRate != 48000) && 
 		 (*SampleRate != 88200) && (*SampleRate != 96000) &&
 		 (*SampleRate != 176400) && (*SampleRate != 192000) ) {
-		printf ("WidgetTest: ERROR: Only 44.1/48/88.2/96/176.4/192ksps accepted, not the detected %d.\n", *SampleRate);
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: Only 44.1/48/88.2/96/176.4/192ksps accepted, not the detected %d.\n", *SampleRate);
 		n = 0 ;
 	}
 
 	if (ByteRate != *SampleRate * *NumChannels * *BytesPerSample) {
-		printf ("WidgetTest: ERROR: Mismatch between ByteRate, SampleRate, NumChannels, BitsPerSample\n");
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: Mismatch between ByteRate, SampleRate, NumChannels, BitsPerSample\n");
 		n = 0;
 	}
 
 	if (BlockAlign != *NumChannels * *BytesPerSample) {
-		printf ("WidgetTest: ERROR: Mismatch between BlockAlign, NumChannels, BitsPerSample\n");
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: Mismatch between BlockAlign, NumChannels, BitsPerSample\n");
 		n = 0;
 	}
 
 	if ( (*BytesPerSample != 2) && (*BytesPerSample != 3) && (*BytesPerSample != 4) ) {
-		printf ("WidgetTest: ERROR: Only 2/3/4 bytes per mono sample accepted, not the detected %d.\n", *BytesPerSample);
+		if (!globalSilent)
+			printf ("WidgetTest: ERROR: Only 2/3/4 bytes per mono sample accepted, not the detected %d.\n", *BytesPerSample);
 		n = 0;
 	}
 
@@ -265,7 +276,7 @@ long FillWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				if (globalVerbose == 1)
+				if (!globalSilent)
 					printf ("WidgetTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
@@ -281,7 +292,7 @@ long FillWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				if (globalVerbose == 1)
+				if (!globalSilent)
 					printf ("WidgetTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
@@ -297,7 +308,7 @@ long FillWavBuffer3 (AudioSample3* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				if (globalVerbose == 1)
+				if (!globalSilent)
 					printf ("WidgetTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
@@ -323,7 +334,7 @@ long FillWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				if (globalVerbose == 1)
+				if (!globalSilent)
 					printf ("WidgetTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
@@ -339,7 +350,7 @@ long FillWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				if (globalVerbose == 1)
+				if (!globalSilent)
 					printf ("WidgetTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
@@ -355,7 +366,7 @@ long FillWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 				readsamples++;
 			}
 			else {
-				if (globalVerbose == 1)
+				if (!globalSilent)
 					printf ("WidgetTest: ERROR: Read error n=%d, ReadSamples=%d, m=%d", n, readsamples, m);
 				return readsamples;						// Cut the process short if read fails
 			}
@@ -462,25 +473,65 @@ int main(int argc, char* argv[]) {
 	DWORD tempNumParsedSamples;
 
 	if (argc == 1) {	// No arguments
-		freq = 48000;	// Default sampling frequency
-		mode = 0;		// Run as signal generator
+		mode = 2;		// Display help file
 	}
 
 	else if (argc == 2) { // One argument, may it be a valid audio frequency?
-		freq = atoi(argv[1]);
-		if ( (freq == 44100) || (freq == 48000) || (freq == 88200) || (freq == 96000) || (freq == 176400) || (freq == 192000) )
-			mode = 0;	// Run as signal generator
-		else
-			mode = 1;	// Run as wav file player
+
+		// Time to display help information?
+		if (strchr(argv[1], '?')) { 
+			mode = 2;
+		}
+		else {
+			freq = atoi(argv[1]);
+			if ( (freq == 44100) || (freq == 48000) || (freq == 88200) || (freq == 96000) || (freq == 176400) || (freq == 192000) )
+				mode = 0;	// A valid sample rate. Run as signal generator
+			else
+				mode = 1;	// Not a valid sample rate. Run as wav file player
+		}
 	}
 
 	else				// >1 argument, run as wav file player
 		mode = 1;		// Run as wav file player
 
+	if (mode == 2) {	// Help file
+		printf("WidgetTest Help - Program version 20140410B\n");
+		printf("\n");
+		printf(" WidgetTest is a test and playback program developed for the AudioWidget.\n");
+		printf(" See http://www.henryaudio.com for details.\n");
+		printf("\n");
+		printf(" Use WidgetTest in one of these two ways:\n");
+		printf(" * As sine generator use a single parameter for the sampling frequency.\n");
+		printf("   The sampling freqnecy must be one of 44100, 48000, 88200, 96000,\n");
+		printf("   176400, 192000\n");
+		printf("   Example: \"WidgetTest 44100\" repeats a 48-sample sine wave at fs=44.1kHz.\n");
+		printf("\n");
+		printf(" * As a wav file player. The parameter(s) may be a single .wav file, \n");
+		printf("   multiple.wav files or wildcards\n");
+		printf("   Example: \"WidgetTest foo.wav\" will play back the file foo.wav\n");
+		printf("   Example: \"WidgetTest foo.wav bar.wav\" will play the two files in sequence\n");
+		printf("\n");
+		printf(" Optional wav file switches may be used before the .wav file parmaeters.\n");
+		printf(" Switches must follow the character '-' and be a continuous string.\n");
+		printf(" Recognized switches are:\n");
+		printf(" -v Verbose operation (default OFF)\n");
+		printf(" -c CPU time logging of time between callback function by means of\n");
+		printf("    __rdtsc(); (default OFF)\n");
+		printf(" -s Silent operation without Warnings and Errors (default OFF).\n");
+		printf("    Switch -s will override -v but not -c.\n");
+		printf(" Example: \"WidgetTest -vc foo.wav\" will play back foo.wav verbosely while\n");
+		printf(" logging CPU time\n");
+		printf("\n");
+		printf(" Single-letter keyboard commands are during wav file playback:\n");
+		printf(" 'p' (un)pauses\n");
+		printf(" 'r' replays current track\n");
+		printf(" 't' terminates session\n");
+		printf(" any other key skips to next track\n");
+		printf("\n");
+	}
 
-	if (mode == 0) {	// signal generator
-		if (globalVerbose == 1)
-			printf("WidgetTest: Running as signal generator.\n");
+	if (mode == 0) {	// signal generator, parameters don't apply
+		printf("WidgetTest: Running as signal generator.\n");
 
 		// First check for valid playback device
 		USBAudioDevice device(true);
@@ -514,14 +565,35 @@ int main(int argc, char* argv[]) {
 		int BytesPerSample = 0;
 		long NumSamples = 0;		// The number of samples in the wav file, independant of sample format
 		FILE * wavfile;
+		int n;
 
-		if (globalVerbose == 1)
+		// http://www.dailyfreecode.com/code/find-first-occurrence-character-string-2235.aspx
+		char *ptr = strchr(argv[1], '-');
+		if (ptr-argv[1] == 0) {		// Parameters! Test if the '-' came first in argv[1]
+			if (strchr(argv[1], 'v'))	// Verbose!
+				globalVerbose = 1;
+
+			if (strchr(argv[1], 's')) {	// Silent!
+				globalVerbose = 0;
+				globalSilent = 1;
+			}
+
+			if (strchr(argv[1], 'c')) 	// CPU time logging
+				globalCPUTimeMonitor = 1;
+
+			n = 2;					// Start playing wav file(s) from argv[2]
+		}
+		else
+			n = 1;					// Start playing wav files from argv[1]
+			
+		if (globalVerbose)
 			printf("WidgetTest: Running as wav file player.\n");
 
 		// First check for valid playback device
 		USBAudioDevice device(true);
 		if (!device.InitDevice()) {
-			printf ("WidgetTest: ERROR: UAC2 Audio device not found\n");
+			if (!globalSilent)
+				printf ("WidgetTest: ERROR: UAC2 Audio device not found\n");
 			return -1;
 		}
 		SubSlotSize = device.GetDACSubslotSize();
@@ -535,26 +607,25 @@ int main(int argc, char* argv[]) {
 
 		// Open a sequence of wav files
 
-		int n = 1;
-		while ( (n<argc) && (paused != -1) ) {
-
-//		for (int n=1; n<argc; n++) {
-//			wavfile = fopen(argv[n],"rb");				// fopen_s is recommended...
-
-			wavfile = fopen(argv[n++],"rb");				// fopen_s is recommended...
+		while ( (n<argc) && (paused != -1) ) {			// n++ happens at end of while loop
+			wavfile = fopen(argv[n],"rb");				// fopen_s is recommended...
 
 			if (wavfile==NULL) {
-				printf ("\nWidgetTest: WARNING: File not found: %s\n",argv[n]);
+				if (!globalSilent)
+					printf ("\nWidgetTest: WARNING: File not found: %s\n",argv[n]);
+				n++;									// Here due to following continue statement
 				continue;
 			}
 
-			if (globalVerbose == 1)
+			if (!globalSilent)
 				printf ("\nWidgetTest: Found file: %s\n",argv[n]);
+
+			n++;										// Prepare for next wav file, above continue didn't happen
 
 			if (!ParseWavHeader (wavfile, &NumChannels, &SampleRate, &BytesPerSample, &NumSamples))
 				continue;								// Function does its own error reporting
 
-			if (globalVerbose == 1)
+			if (globalVerbose)
 				printf ("WidgetTest: Start reading wav file\n");
 
 			// Don't yet touch globalNumParsedSamples. Playback of nonzero audio data 
@@ -567,25 +638,25 @@ int main(int argc, char* argv[]) {
 				globalWavBuffer4 = new AudioSample4[NumSamples];
 				tempNumParsedSamples = FillWavBuffer4 (globalWavBuffer4, wavfile, &BytesPerSample, &NumSamples);
 			}
-			if (globalVerbose == 1)
+			if (globalVerbose)
 				printf ("WidgetTest: tempNumParsedSamples=%d NumSamples=%d\n", tempNumParsedSamples, NumSamples);
 
 			fclose (wavfile);
 
 			if (tempNumParsedSamples == NumSamples) {
-				if (globalVerbose == 1)
+				if (globalVerbose)
 					printf ("WidgetTest: End reading wav file\n");
 
 				if ( (prevSampleRate != SampleRate) && (prevSampleRate != 0) ) {
 					device.Stop();						// When on >1st wav file, and with new s-rate, first stop device
-					if (globalVerbose == 1)
+					if (globalVerbose)
 						printf("WidgetTest: device.Stop()\n");
 				}
 
 				if (prevSampleRate != SampleRate) {		// With 1st wav file, prevSampleRate==0. For 1st wav file and
 					device.SetSampleRate(SampleRate);	// sample rate changes, change the rate and restart device
 					device.Start();
-					if (globalVerbose == 1)
+					if (globalVerbose)
 						printf("WidgetTest: device.SetSampleRate() and device.Start()\n");
 				}
 
@@ -597,14 +668,11 @@ int main(int argc, char* argv[]) {
 				globalNumParsedSamples = tempNumParsedSamples; 
 
 				// Wait loop while music hopefully plays
-				if (globalVerbose == 1) {
-					printf("WidgetTest: 'p' (un)pauses\n");
-					printf("WidgetTest: 'r' replays track\n");
-					printf("WidgetTest: 't' terminates session\n");
-					printf("WidgetTest: any other key skips to next track\n"); 
+				if (!globalSilent) {
+					printf("WidgetTest: Use commands 'p', 'r', 't' or other key.\n");
 				}
 
-				while ( (globalBufferIndex < globalNumParsedSamples) && (paused != -1) ) {
+				while ( ((globalBufferIndex < globalNumParsedSamples) && (paused != -1)) || (paused == 1) ) {
 
 					// Print out callback response time every 300ms
 					if (globalCPUTimeMonitor) {
@@ -618,7 +686,8 @@ int main(int argc, char* argv[]) {
 
 					if (_kbhit()) {
 						command = _getch();
-						printf ("WidgetTest: Got command '%c'\n", command);
+						if (globalVerbose)
+							printf ("WidgetTest: Got command '%c'\n", command);
 
 						if (command == 'p') {			// 't' toggles pause mode
 							if (paused) {
@@ -643,7 +712,8 @@ int main(int argc, char* argv[]) {
 						}
 
 						else {							// All other commands terminate playback of current file
-							printf ("WidgetTest: Terminating track\n");
+							if (globalVerbose)
+								printf ("WidgetTest: Terminating this track\n");
 							paused = 0;					// Un-pause at termination
 							globalNumParsedSamples = 0;	// We haven't yet read anything from the next wav file
 							globalBufferIndex = 0;		// This instructs FilWavData? to dump zeros
@@ -661,10 +731,12 @@ int main(int argc, char* argv[]) {
 				if (_kbhit())
 					_getch();
 
-				printf("WidgetTest: globalBufferIndex=%d globalNumParsedSamples=%d\n", globalBufferIndex, globalNumParsedSamples);
+				if (globalVerbose)
+					printf("WidgetTest: globalBufferIndex=%d globalNumParsedSamples=%d\n", globalBufferIndex, globalNumParsedSamples);
 			} // globalNumParsedSamples OK
 			else {
-				printf ("WidgetTest: ERROR: Wav file not read into memory\n");
+				if (!globalSilent)		
+					printf ("WidgetTest: ERROR: Wav file not read into memory\n");
 				return -1;
 			}
 
@@ -677,6 +749,7 @@ int main(int argc, char* argv[]) {
 				delete [] globalWavBuffer3;
 			else if(SubSlotSize == 4)
 				delete [] globalWavBuffer4;
+
 		} // while n wav files
 
 		device.Stop();
