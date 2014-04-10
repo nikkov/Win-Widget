@@ -82,6 +82,10 @@ DWORD globalNumParsedSamples = 0;		// The number of samples read in from the wav
 DWORD globalBufferIndex = 0;
 DWORD globalPacketCounter = 0;
 
+DWORD globalCPUTimeMonitor = 1;			// Monitor CPU time spent in callback function
+unsigned __int64 globalCPUTimeMax, globalCPUTimeMin, globalCPUTimeLast;
+
+
 // Assume we're running in verbose mode until "-v" can be specified on command line
 DWORD globalVerbose = 1; 
 
@@ -365,6 +369,9 @@ long FillWavBuffer4 (AudioSample4* wavbuffer, FILE* wavfile, int* BytesPerSample
 // Move data from wav file RAM to USB device. This function is passed as a callback
 void FillWavData3(void* context, UCHAR *buffer, int& len)
 {
+	unsigned __int64 CPUTime, deltaCPUTime;
+	static unsigned __int64 prevCPUTime=0;
+
 	AudioSample3 *sampleBuff = (AudioSample3 *)buffer;
 	int sampleLength = len / sizeof(AudioSample3);
 
@@ -385,14 +392,29 @@ void FillWavData3(void* context, UCHAR *buffer, int& len)
 	globalPacketCounter++;
 	if(globalPacketCounter > 0xFF)
 		globalPacketCounter = 0;
+
+	if (globalCPUTimeMonitor) {
+		CPUTime = __rdtsc();
+		if (prevCPUTime != 0) {		// Check every time except 1st time callback executes
+			deltaCPUTime = CPUTime - prevCPUTime;
+
+			if (deltaCPUTime > globalCPUTimeMax)
+				globalCPUTimeMax = deltaCPUTime;
+			if (deltaCPUTime < globalCPUTimeMin)
+				globalCPUTimeMin = deltaCPUTime;
+
+			globalCPUTimeLast = deltaCPUTime;
+		}
+		prevCPUTime = CPUTime;
+	}
 }
 
 
 // Move data from wav file RAM to USB device. This function is passed as a callback
 void FillWavData4(void* context, UCHAR *buffer, int& len)
 {
-	unsigned __int64 CPUtime;
-	static unsigned __int64 prevCPUtime;
+	unsigned __int64 CPUTime, deltaCPUTime;
+	static unsigned __int64 prevCPUTime=0;
 
 	AudioSample4 *sampleBuff = (AudioSample4 *)buffer;
 	int sampleLength = len / sizeof(AudioSample4);
@@ -415,8 +437,20 @@ void FillWavData4(void* context, UCHAR *buffer, int& len)
 	if(globalPacketCounter > 0xFF)
 		globalPacketCounter = 0;
 
-	CPUtime = __rdtsc();
-	// Elaborate on CPU time differentials..
+	if (globalCPUTimeMonitor) {
+		CPUTime = __rdtsc();
+		if (prevCPUTime != 0) {		// Check every time except 1st time callback executes
+			deltaCPUTime = CPUTime - prevCPUTime;
+
+			if (deltaCPUTime > globalCPUTimeMax)
+				globalCPUTimeMax = deltaCPUTime;
+			if (deltaCPUTime < globalCPUTimeMin)
+				globalCPUTimeMin = deltaCPUTime;
+
+			globalCPUTimeLast = deltaCPUTime;
+		}
+		prevCPUTime = CPUTime;
+	}
 }
 
 
@@ -472,7 +506,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	else if (mode == 1) { // wav file player
-		int paused;
+		int paused = 0;				// 0 = not paused, loop through songs. 1 = paused, play music. -1 = terminate playback
 		char command;
 		int NumChannels = 0;
 		int SampleRate = 0;
@@ -500,8 +534,15 @@ int main(int argc, char* argv[]) {
 			device.SetDACCallback(FillWavData4, NULL);
 
 		// Open a sequence of wav files
-		for (int n=1; n<argc; n++) {
-			wavfile = fopen(argv[n],"rb");				// fopen_s is recommended...
+
+		int n = 1;
+		while ( (n<argc) && (paused != -1) ) {
+
+//		for (int n=1; n<argc; n++) {
+//			wavfile = fopen(argv[n],"rb");				// fopen_s is recommended...
+
+			wavfile = fopen(argv[n++],"rb");				// fopen_s is recommended...
+
 			if (wavfile==NULL) {
 				printf ("\nWidgetTest: WARNING: File not found: %s\n",argv[n]);
 				continue;
@@ -556,17 +597,30 @@ int main(int argc, char* argv[]) {
 				globalNumParsedSamples = tempNumParsedSamples; 
 
 				// Wait loop while music hopefully plays
-				if (globalVerbose == 1)
-					printf("WidgetTest: 'p' (un)pauses, 'r' replays track, other key terminates track\n"); 
+				if (globalVerbose == 1) {
+					printf("WidgetTest: 'p' (un)pauses\n");
+					printf("WidgetTest: 'r' replays track\n");
+					printf("WidgetTest: 't' terminates session\n");
+					printf("WidgetTest: any other key skips to next track\n"); 
+				}
 
-				while ( (globalBufferIndex < globalNumParsedSamples) || (paused) ) {
-					Sleep(50);							// ms sleep between keyboard polls / termination checks
+				while ( (globalBufferIndex < globalNumParsedSamples) && (paused != -1) ) {
+
+					// Print out callback response time every 300ms
+					if (globalCPUTimeMonitor) {
+						globalCPUTimeMax = 0;
+						globalCPUTimeMin = 0x7FFFFFFFFFFFFFFF; // A fairly large 64-bit number. YES, it is unsigned, but still!
+						Sleep(300);
+						printf ("WidgetTest: Min:%8I64d Max:%8I64d Last:%8I64d\n", globalCPUTimeMin, globalCPUTimeMax, globalCPUTimeLast);
+					}
+					else
+						Sleep(50);						// ms sleep between keyboard polls / termination checks
 
 					if (_kbhit()) {
 						command = _getch();
 						printf ("WidgetTest: Got command '%c'\n", command);
 
-						if (command == 'p') {			// Toggle pause mode
+						if (command == 'p') {			// 't' toggles pause mode
 							if (paused) {
 								printf ("WidgetTest: Un-pausing\n");
 								paused = 0;				// Un-pause, restore index
@@ -580,8 +634,12 @@ int main(int argc, char* argv[]) {
 							}
 						}
 
-						else if (command == 'r') {		// Replay track in RAM
+						else if (command == 'r') {		// 'r' replays track in RAM
 							globalBufferIndex = 0;
+						}
+
+						else if (command == 't') {		// 't' terminates playback
+							paused = -1;
 						}
 
 						else {							// All other commands terminate playback of current file
@@ -619,7 +677,7 @@ int main(int argc, char* argv[]) {
 				delete [] globalWavBuffer3;
 			else if(SubSlotSize == 4)
 				delete [] globalWavBuffer4;
-		} // for n wav files
+		} // while n wav files
 
 		device.Stop();
 
