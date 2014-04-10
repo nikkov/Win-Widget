@@ -766,7 +766,7 @@ Todo:
 - Smaller memory footprint
 - Determine how callback is called (thread?) See mail from Nikolay
 - Measure and optimize lateny
-  - Differential CPU time measurement in callback
+  + Differential CPU time measurement in callback
   - Preventing swapping of memory
   - Make callback thread(?) more real-time-y
 - Improve on USB feedback poll rate understanding
