@@ -747,12 +747,14 @@ int main(int argc, char* argv[]) {
 
 						if (command == 'p') {			// 't' toggles pause mode
 							if (paused) {
-								printf ("WidgetTest: Un-pausing\n");
+								if (!globalSilent)
+									printf ("WidgetTest: Un-pausing\n");
 								paused = 0;				// Un-pause, restore index
 								globalNumParsedSamples = tempNumParsedSamples;
 							}
 							else {
-								printf ("WidgetTest: Pausing\n");
+								if (!globalSilent)
+									printf ("WidgetTest: Pausing\n");
 								paused = 1;				// Pause, back up index to recycled variable
 								tempNumParsedSamples = globalNumParsedSamples;
 								globalNumParsedSamples = 0;	// Cause zeros playback
