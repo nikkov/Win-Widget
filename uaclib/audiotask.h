@@ -229,7 +229,7 @@ protected:
 public:
 //	BaseThread(int nPriority = THREAD_PRIORITY_TIME_CRITICAL) : m_Task(), m_taskState(TaskThread::TaskCreated), m_Thread(INVALID_HANDLE_VALUE)
 	BaseThread(int nPriority = 16) : m_Task(), m_taskState(TaskThread::TaskCreated), m_Thread(INVALID_HANDLE_VALUE)
-// commented-out nPriority equates to 15. 	
+// commented-out nPriority equates to 15. It looks like 16 may be slightly better
 	{
 #ifdef _ENABLE_TRACE
 			debugPrintf("ASIOUAC: %s. Thread constructor\n", m_Task.TaskName());
