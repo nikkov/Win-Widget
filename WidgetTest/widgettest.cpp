@@ -82,6 +82,7 @@ AudioSample4 * globalWavBuffer4;
 DWORD globalNumParsedSamples = 0;		// The number of samples read in from the wav file, independant of sample format
 DWORD globalBufferIndex = 0;
 DWORD globalPacketCounter = 0;
+DWORD globalPreFetch = 0;
 
 DWORD globalCPUTimeMonitor = 0;			// Monitor CPU time spent in callback function
 unsigned __int64 globalCPUTimeMax, globalCPUTimeMin, globalCPUTimeLast;
@@ -519,6 +520,8 @@ int main(int argc, char* argv[]) {
 		printf("    __rdtsc(); (default OFF)\n");
 		printf(" -s Silent operation without Warnings and Errors (default OFF).\n");
 		printf("    Switch -s will override -v but not -c.\n");
+		printf(" -f main() loop pre-fetches audio data. No buffering, but perhaps\n");
+		printf("    a way to prevent too late swap-in of audio data.\n");
 		printf(" Example: \"WidgetTest -vc foo.wav\" will play back foo.wav verbosely while\n");
 		printf(" logging CPU time\n");
 		printf("\n");
@@ -565,7 +568,11 @@ int main(int argc, char* argv[]) {
 		int BytesPerSample = 0;
 		long NumSamples = 0;		// The number of samples in the wav file, independant of sample format
 		FILE * wavfile;
-		int n;
+		int n;						// Wav file counter
+		DWORD PreFetchIndex, PreFetchIndexEnd;
+		AudioSample3 DummySample3;
+		AudioSample4 DummySample4;
+
 
 		// http://www.dailyfreecode.com/code/find-first-occurrence-character-string-2235.aspx
 		char *ptr = strchr(argv[1], '-');
@@ -580,6 +587,9 @@ int main(int argc, char* argv[]) {
 
 			if (strchr(argv[1], 'c')) 	// CPU time logging
 				globalCPUTimeMonitor = 1;
+
+			if (strchr(argv[1], 'f')) 	// Pre fetch
+				globalPreFetch = 1;
 
 			n = 2;					// Start playing wav file(s) from argv[2]
 		}
@@ -678,11 +688,57 @@ int main(int argc, char* argv[]) {
 					if (globalCPUTimeMonitor) {
 						globalCPUTimeMax = 0;
 						globalCPUTimeMin = 0x7FFFFFFFFFFFFFFF; // A fairly large 64-bit number. YES, it is unsigned, but still!
+
+						if (globalPreFetch) {
+							// Look ahead in RAM at the audio samples before they are consumed by callback
+							// function
+							// Start 1/4s ahead of globalBufferIndex
+							PreFetchIndex = globalBufferIndex + (SampleRate>>2);
+							if (PreFetchIndex >= globalNumParsedSamples)
+								PreFetchIndex = globalNumParsedSamples;	
+							// End 1/4 + 1/2 s ahead of globalBufferIndex
+							PreFetchIndexEnd = globalBufferIndex + (SampleRate>>2) + (SampleRate>1);
+							if (PreFetchIndexEnd >= globalNumParsedSamples)
+								PreFetchIndexEnd = globalNumParsedSamples;	
+
+							while (PreFetchIndex < PreFetchIndexEnd) {
+								if(SubSlotSize == 3)
+									DummySample3.left = globalWavBuffer3[PreFetchIndex].left;
+								else if(SubSlotSize == 4)
+									DummySample4.left = globalWavBuffer4[PreFetchIndex].left;
+								PreFetchIndex++;
+							}
+							// FIX: verify: Is this code really executed when DummySample? isn't used anywhere?
+						} // globalPreFetch
+
 						Sleep(300);
 						printf ("WidgetTest: Min:%8I64d Max:%8I64d Last:%8I64d\n", globalCPUTimeMin, globalCPUTimeMax, globalCPUTimeLast);
 					}
-					else
+					else {
+						if (globalPreFetch) {
+							// Look ahead in RAM at the audio samples before they are consumed by callback
+							// function
+							// Start 1/32s ahead of globalBufferIndex
+							PreFetchIndex = globalBufferIndex + (SampleRate>>5);
+							if (PreFetchIndex >= globalNumParsedSamples)
+								PreFetchIndex = globalNumParsedSamples;	
+							// End 1/8s ahead of globalBufferIndex
+							PreFetchIndexEnd = globalBufferIndex + (SampleRate>>3);
+							if (PreFetchIndexEnd >= globalNumParsedSamples)
+								PreFetchIndexEnd = globalNumParsedSamples;	
+
+							while (PreFetchIndex < PreFetchIndexEnd) {
+								if(SubSlotSize == 3)
+									DummySample3.left = globalWavBuffer3[PreFetchIndex].left;
+								else if(SubSlotSize == 4)
+									DummySample4.left = globalWavBuffer4[PreFetchIndex].left;
+								PreFetchIndex++;
+							}
+							// FIX: verify: Is this code really executed when DummySample? isn't used anywhere?
+						} // globalPreFetch
+
 						Sleep(50);						// ms sleep between keyboard polls / termination checks
+					}
 
 					if (_kbhit()) {
 						command = _getch();
