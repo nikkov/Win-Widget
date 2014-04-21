@@ -53,6 +53,8 @@ namespace WidgetControl
         private const int audio_product_id_10  = 0x075D;		// AB-1.x     UAC2 PID
         private const int audio_product_id_11  = 0x075E;		// QNKTC future use UAC1 PID
         private const int audio_product_id_12  = 0x075F;		// QNKTC future use UAC2 PID
+        private const int audio_product_id_13  = 0x098b;		// AMB UAC1 PID
+        private const int audio_product_id_14  = 0x098c;		// AMB UAC2 PID
 
         LstK deviceList = null;
         UsbK usb = null;
@@ -155,7 +157,9 @@ namespace WidgetControl
                            (deviceInfo.Common.Pid == audio_product_id_9) ||
                            (deviceInfo.Common.Pid == audio_product_id_10) ||
                            (deviceInfo.Common.Pid == audio_product_id_11) ||
-                           (deviceInfo.Common.Pid == audio_product_id_12)
+                           (deviceInfo.Common.Pid == audio_product_id_12) ||
+                           (deviceInfo.Common.Pid == audio_product_id_13) ||
+                           (deviceInfo.Common.Pid == audio_product_id_14)
                          )
                        ) 
                      )
