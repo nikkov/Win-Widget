@@ -712,7 +712,7 @@ int main(int argc, char* argv[]) {
 						} // globalPreFetch
 
 						Sleep(300);
-						printf ("WidgetTest: Min:%8I64d Max:%8I64d Last:%8I64d\n", globalCPUTimeMin, globalCPUTimeMax, globalCPUTimeLast);
+						printf ("WidgetTest: Min:%10I64d Max:%10I64d Last:%10I64d\n", globalCPUTimeMin, globalCPUTimeMax, globalCPUTimeLast);
 					}
 					else {
 						if (globalPreFetch) {

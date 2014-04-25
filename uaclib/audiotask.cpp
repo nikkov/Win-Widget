@@ -317,6 +317,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 		if(m_readDataCb)
 			m_readDataCb(m_readDataCbContext, nextXfer->DataBuffer, dataLength);
 
+/* BSB 20140415 disabling dump file
 #ifdef _ENABLE_TRACE
 		//You can dump data for analise like this
 		if(m_dumpFile) { 
@@ -325,6 +326,7 @@ int AudioDACTask::FillBuffer(ISOBuffer* nextXfer)
 			fwrite(nextXfer->DataBuffer, 1, dataLength, m_dumpFile);
 		}
 #endif
+*/
 
 #ifdef _ENABLE_TRACE
 //		debugPrintf("ASIOUAC: %s. Transfer: feedback val = %.1f, send %.1f samples, transfer length=%d\n", TaskName(), raw_cur_feedback, (float)dataLength/8.f, dataLength);

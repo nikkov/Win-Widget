@@ -496,9 +496,11 @@ class AudioDACTask : public AudioTask
 	FeedbackInfo*				m_feedbackInfo;
 	FillDataCallback			m_readDataCb;
 	void*						m_readDataCbContext;
+/* BSB 20140415 disabling dump file
 #ifdef _ENABLE_TRACE
 	FILE *m_dumpFile;
 #endif
+*/
 protected:
 	bool InitBuffers(int freq)
 	{
@@ -526,18 +528,22 @@ protected:
 public:
 	AudioDACTask() : AudioTask(packetPerTransferDAC, "Audio DAC task"), m_feedbackInfo(NULL), m_readDataCb(NULL), m_readDataCbContext(NULL)
 	{
+/* BSB 20140415 disabling dump file
 #ifdef _ENABLE_TRACE
 		m_dumpFile = fopen("c:\\dac_dump.bin", "wb");
 		debugPrintf("AudioDACTask() : AudioTask() Created file c:\\dac_dump.bin");
 #endif
+*/
 	}
 
 	~AudioDACTask()
 	{
+/* BSB 20140415 disabling dump file
 #ifdef _ENABLE_TRACE
 		if(m_dumpFile)
 			fclose(m_dumpFile);
 #endif
+*/
 	}
 
 	void SetFeedbackInfo(FeedbackInfo* fb)
