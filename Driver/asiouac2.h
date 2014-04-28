@@ -25,6 +25,7 @@
 #include "asiosys.h"
 
 #define DRIVER_VERSION		0x00000002L
+#define SAMPLE_RATE_INITIAL 100
 
 enum
 {

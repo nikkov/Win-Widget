@@ -25,7 +25,7 @@
 
 
 //#define DEFAULT_BLOCK_SIZE 32
-#define DEFAULT_BLOCK_SIZE 128
+#define DEFAULT_BLOCK_SIZE 256 // BSB 20140427 increased from 128
 
 #ifdef _ENABLE_TRACE
 void debugPrintf(const char *szFormat, ...)
@@ -170,7 +170,7 @@ AsioUAC2::AsioUAC2 () : AsioDriver (), callbacks(NULL), inputBuffers(NULL), outp
 	// typically blockFrames * 2; try to get 1 by offering direct buffer
 	// access, and using asioPostOutput for lower latency
 	samplePosition = 0;
-	sampleRate = 100;
+	sampleRate = SAMPLE_RATE_INITIAL; 
 	milliSeconds = (long)((double)(blockFrames * 1000) / sampleRate);
 	active = false;
 	started = false;
@@ -306,6 +306,15 @@ ASIOError AsioUAC2::start()
 		return ASE_HWMalfunction;
 	}
 
+	// BSB 20140427 added for cases where start() is called without setSampleRate()
+	if (sampleRate == SAMPLE_RATE_INITIAL) 
+	{
+		setSampleRate ((ASIOSampleRate)44100);
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: AsioUAC2::start() sampleRate not set, defaulting to 44100!\n");
+#endif
+	}
+
 	if (callbacks)
 	{
 		started = false;
@@ -380,8 +389,16 @@ ASIOError AsioUAC2::stop()
 	if(m_BufferSwitchEvent)
 		SetEvent(m_BufferSwitchEvent);
 
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::stop() Before m_device->Stop()\n");
+#endif
+
 	ASIOError retVal = m_device->Stop() ? ASE_OK : ASE_HWMalfunction;
-	
+
+#ifdef _ENABLE_TRACE
+	debugPrintf("ASIOUAC: AsioUAC2::stop() After m_device->Stop()\n");
+#endif
+		
 	if(retVal == ASE_OK)
 	{
 		m_device->SetNotifyCallback(NULL, this);
@@ -479,13 +496,13 @@ ASIOError AsioUAC2::setSampleRate (ASIOSampleRate sampleRate)
 				callbacks->sampleRateDidChange (this->sampleRate);
 
 #ifdef _ENABLE_TRACE
-			debugPrintf("ASIOUAC: AsioUAC2::setSampleRate() Samplerate changed to %d\n", (int)this->sampleRate);
+			debugPrintf("ASIOUAC: AsioUAC2::setSampleRate() Samplerate changed to %d\n", (int)sampleRate);
 #endif
 		}
 		else
 		{
 #ifdef _ENABLE_TRACE
-			debugPrintf("ASIOUAC: AsioUAC2::setSampleRate() Samplerate NOT changed to %d\n", iSampleRate);
+			debugPrintf("ASIOUAC: AsioUAC2::setSampleRate() Samplerate NOT changed to %d\n", (int)sampleRate);
 #endif
 			return ASE_NoClock;
 		}
