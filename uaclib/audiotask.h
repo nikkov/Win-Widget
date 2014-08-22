@@ -381,7 +381,8 @@ class AudioTask : public TaskThread
 		m_FrameNumber += m_channelNumber * m_sampleSize;
 	}
 
-	void IsoXferComplete(ISOBuffer* buffer, ULONG transferLength)
+//	void IsoXferComplete(ISOBuffer* buffer, ULONG transferLength)
+	void IsoXferComplete(ISOBuffer* buffer, UINT transferLength)
 	{
 		m_CompletedCount++;
 		m_LastStartFrame = buffer->IsoContext->StartFrame;
