@@ -71,6 +71,10 @@ public:
 	void SetIntervalValue(float value)
 	{
 		interval = 1000.f * value; //for output real freq
+
+#ifdef _ENABLE_TRACE
+		debugPrintf("ASIOUAC: SetIntervalValue() interval = %f\n", interval);
+#endif
 	}
 
 	void SetDefaultValue(float feedbackValue)
