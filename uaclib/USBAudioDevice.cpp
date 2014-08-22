@@ -283,10 +283,6 @@ bool USBAudioDevice::InitDevice()
 bool USBAudioDevice::CheckSampleRate(USBAudioClockSource* clocksrc, int newfreq)
 {
 	unsigned char buff[64];
-<<<<<<< HEAD
-//	ULONG lengthTransferred = 0;
-=======
->>>>>>> master
 	UINT lengthTransferred = 0;
 	bool retVal = FALSE;
 	if(UsbClaimInterface(clocksrc->m_interface->Descriptor().bInterfaceNumber))
@@ -367,10 +363,6 @@ USBAudioClockSource* USBAudioDevice::FindClockSource(int freq)
 
 bool USBAudioDevice::SetSampleRateInternal(int freq)
 {
-<<<<<<< HEAD
-//	ULONG lengthTransferred = 0;
-=======
->>>>>>> master
 	UINT lengthTransferred = 0;
 	bool retValue = FALSE;
 	USBAudioClockSource* clockSource = FindClockSource(freq);
@@ -435,10 +427,6 @@ int USBAudioDevice::GetCurrentSampleRate()
 
 int USBAudioDevice::GetSampleRateInternal(int interfaceNum, int clockID)
 {
-<<<<<<< HEAD
-//	ULONG lengthTransferred = 0;
-=======
->>>>>>> master
 	UINT lengthTransferred = 0;
 	int freq = 0;
 

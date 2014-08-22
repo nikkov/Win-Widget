@@ -73,11 +73,7 @@ protected:
 //	bool SendUsbControl(int dir, int type, int recipient, int request, int value, int index,
 //				   unsigned char *buff, int size, ULONG *lengthTransferred);
 	bool SendUsbControl(int dir, int type, int recipient, int request, int value, int index,
-<<<<<<< HEAD
 				   unsigned char *buff, int size, UINT *lengthTransferred);
-=======
-				   unsigned char *buff, int size, PUINT lengthTransferred);
->>>>>>> master
 
 	virtual bool ParseDescriptorInternal(USB_DESCRIPTOR_HEADER* uDescriptor) = 0;
 
@@ -139,11 +135,7 @@ public:
 		return FALSE;
 	}
 
-<<<<<<< HEAD
-//	bool OvlWait(KOVL_HANDLE OverlappedK, LONG TimeoutMS, KOVL_WAIT_FLAG WaitFlags, PULONG TransferredLength)
-=======
->>>>>>> master
-	bool OvlWait(KOVL_HANDLE OverlappedK, LONG TimeoutMS, KOVL_WAIT_FLAG WaitFlags, PUINT TransferredLength)
+	bool OvlWait(KOVL_HANDLE OverlappedK, LONG TimeoutMS, KOVL_WAIT_FLAG WaitFlags, PUINT TransferredLength) // PUINT consistant with http://libusbk.sourceforge.net/UsbK3/group__ovlk.html#ga68befdb564a625ad80203cf41a260422
 	{
 		if(OvlK_Wait(OverlappedK, TimeoutMS, WaitFlags, TransferredLength))
 			return TRUE;
@@ -154,10 +146,6 @@ public:
 		return FALSE;
 	}
 
-<<<<<<< HEAD
-//    bool OvlWaitOrCancel(KOVL_HANDLE OverlappedK, LONG TimeoutMS, PULONG TransferredLength)
-=======
->>>>>>> master
     bool OvlWaitOrCancel(KOVL_HANDLE OverlappedK, LONG TimeoutMS, PUINT TransferredLength)
 	{
 		if(OvlK_WaitOrCancel(OverlappedK, TimeoutMS, TransferredLength))

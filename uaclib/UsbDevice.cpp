@@ -100,11 +100,7 @@ bool USBDevice::ParseDescriptors(BYTE *configDescr, DWORD length)
 //bool USBDevice::SendUsbControl(int dir, int type, int recipient, int request, int value, int index,
 //				   unsigned char *buff, int size, ULONG *lengthTransferred)
 bool USBDevice::SendUsbControl(int dir, int type, int recipient, int request, int value, int index,
-<<<<<<< HEAD
 				   unsigned char *buff, int size, UINT *lengthTransferred)
-=======
-				   unsigned char *buff, int size, PUINT lengthTransferred)
->>>>>>> master
 {
 	bool retVal = FALSE;
 	WINUSB_SETUP_PACKET packet;
@@ -137,10 +133,6 @@ KUSB_HANDLE USBDevice::FindDevice()
 	m_deviceInfo = NULL;
 	KLST_DEVINFO_HANDLE tmpDeviceInfo = NULL;
 
-<<<<<<< HEAD
-//	ULONG deviceCount = 0;
-=======
->>>>>>> master
 	UINT deviceCount = 0;
 	m_errorCode = ERROR_SUCCESS;
 
@@ -211,10 +203,6 @@ KUSB_HANDLE USBDevice::FindDevice()
 bool USBDevice::InitDevice()
 {
 	BYTE configDescriptorBuffer[4096];
-<<<<<<< HEAD
-//	ULONG lengthTransferred;
-=======
->>>>>>> master
 	UINT lengthTransferred;
 
 	m_deviceMutex = CreateMutex(NULL, FALSE, "Global\\ASIOUAC2");
