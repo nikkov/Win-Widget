@@ -28,6 +28,7 @@ SolidCompression = yes
 ; Win2000 or higher
 MinVersion = 5.0
 WizardSmallImageFile=ASIO.bmp
+ArchitecturesInstallIn64BitMode=x64
 
 ; This installation requires admin priviledges. This is needed to install
 ; drivers on windows vista and later.
@@ -46,14 +47,13 @@ Source: "asiouac2.dll"; DestDir: "{app}"; Flags: promptifolder regserver replace
 Source: "asiouac2debug.dll"; DestDir: "{app}"; Flags: promptifolder replacesameversion
 ;this file used only for registration ASIO driver before than user made first connect device
 Source: "libusbK.dll"; DestDir: "{app}"; Flags: promptifolder replacesameversion
-;BSB added 20140822:
-Source: "WidgetTest64.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder
-Source: "asiouac264.dll"; DestDir: "{app}"; Flags: promptifolder regserver replacesameversion
-Source: "asiouac264debug.dll"; DestDir: "{app}"; Flags: promptifolder replacesameversion
 
+;BSB added 20140822 for 64-bit binaries:
+Source: "WidgetTest64.exe"; DestDir: "{app}"; Flags: replacesameversion promptifolder; Check: Is64BitInstallMode
+Source: "asiouac264.dll"; DestDir: "{app}"; Flags: promptifolder regserver replacesameversion; Check: Is64BitInstallMode
+Source: "asiouac264debug.dll"; DestDir: "{app}"; Flags: promptifolder replacesameversion; Check: Is64BitInstallMode
 
 Source: "usb_driver\Audio-Widget.inf"; DestDir: "{app}\usb_driver"; Flags: promptifolder replacesameversion
-
 Source: "usb_driver\x86\libusb0_x86.dll"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
 Source: "usb_driver\x86\libusbK_x86.dll"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
 Source: "usb_driver\x86\WdfCoInstaller01009.dll"; DestDir: "{app}\usb_driver\x86"; Flags: promptifolder replacesameversion
